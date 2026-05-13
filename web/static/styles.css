@@ -6,6 +6,8 @@
   --muted: #607083;
   --line: #d8dee8;
   --accent: #2563eb;
+  --green: #0f766e;
+  --warn: #b45309;
 }
 
 * {
@@ -50,6 +52,32 @@ main {
   padding: 20px;
 }
 
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.kpi {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.kpi span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kpi b {
+  display: block;
+  margin-top: 6px;
+  font-size: 26px;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -59,14 +87,10 @@ main {
 
 .controls {
   display: grid;
-  grid-template-columns: 1.4fr 1.6fr 120px 90px 110px;
+  grid-template-columns: 1.4fr 1.8fr 120px 120px 120px;
   gap: 12px;
   align-items: end;
   margin-bottom: 16px;
-}
-
-.controls {
-  grid-template-columns: 1.2fr 1.5fr 100px 80px 100px 110px;
 }
 
 label {
@@ -106,6 +130,69 @@ button {
   height: 16px;
 }
 
+.metric-map {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.pill-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pill-grid div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #f9fafb;
+}
+
+.pill-grid b,
+.pill-grid span {
+  display: block;
+}
+
+.pill-grid span {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.bars {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  position: relative;
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.bar-row span,
+.bar-row b {
+  position: relative;
+  z-index: 1;
+}
+
+.bar-row em {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #dbeafe;
+}
+
 .grid {
   display: grid;
   grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr);
@@ -134,7 +221,7 @@ model-viewer {
 
 canvas {
   width: 100%;
-  height: 420px;
+  height: 360px;
 }
 
 .cards {
@@ -171,6 +258,11 @@ canvas {
 .table-wrap {
   overflow: auto;
   margin-top: 12px;
+  max-height: 460px;
+}
+
+.table-wrap.compact {
+  max-height: 320px;
 }
 
 table {
@@ -192,6 +284,53 @@ th {
   font-weight: 600;
 }
 
+.summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.summary-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.summary-item span,
+.summary-item b {
+  display: block;
+}
+
+.summary-item span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.summary-item b {
+  margin-top: 6px;
+  font-size: 22px;
+}
+
+.metric-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: help;
+}
+
+.metric-help i {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
 pre {
   white-space: pre-wrap;
   color: var(--muted);
@@ -202,7 +341,9 @@ pre {
 
 @media (max-width: 900px) {
   .controls,
-  .grid {
+  .grid,
+  .metric-map,
+  .kpis {
     grid-template-columns: 1fr;
   }
 

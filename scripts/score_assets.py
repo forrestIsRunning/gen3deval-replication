@@ -3,13 +3,13 @@ import argparse
 import hashlib
 import json
 import os
-import random
 import re
 from pathlib import Path
 from typing import Any
 
 import requests
 from dotenv import load_dotenv
+from PIL import Image
 
 from common import ROOT, append_jsonl, image_to_data_url, read_jsonl
 
@@ -31,18 +31,6 @@ def find_images(uid: str, render_dir: Path) -> list[Path]:
     return rgb + normal
 
 
-def mock_score(uid: str) -> dict[str, Any]:
-    seed = int(hashlib.sha1(uid.encode("utf-8")).hexdigest()[:8], 16)
-    rng = random.Random(seed)
-    scores = {dim: round(rng.uniform(5.5, 8.8), 2) for dim in DIMENSIONS}
-    scores["overall"] = round(sum(scores[d] for d in DIMENSIONS if d != "overall") / 6, 2)
-    return {
-        "scores": scores,
-        "reason": "Mock score for UI and pipeline smoke testing.",
-        "issues": ["mock result; do not use as experiment evidence"],
-    }
-
-
 def extract_json(text: str) -> dict[str, Any]:
     try:
         return json.loads(text)
@@ -53,10 +41,31 @@ def extract_json(text: str) -> dict[str, Any]:
         return json.loads(match.group(0))
 
 
-def call_vlm(row: dict[str, Any], images: list[Path], model: str, base_url: str, api_key: str) -> dict:
+def prepare_image(path: Path, image_size: int, tmp_dir: Path) -> Path:
+    if image_size <= 0:
+        return path
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    out = tmp_dir / path.name
+    with Image.open(path) as image:
+        image.thumbnail((image_size, image_size))
+        image.convert("RGB").save(out, "JPEG", quality=85)
+    return out
+
+
+def call_vlm(
+    row: dict[str, Any],
+    images: list[Path],
+    model: str,
+    base_url: str,
+    api_key: str,
+    image_size: int,
+    timeout: int,
+) -> dict:
     content: list[dict[str, Any]] = []
+    tmp_dir = ROOT / "data" / "processed" / "_vlm_tmp" / row["uid"]
     for image in images:
-        content.append({"type": "image_url", "image_url": {"url": image_to_data_url(image)}})
+        prepared = prepare_image(image, image_size, tmp_dir)
+        content.append({"type": "image_url", "image_url": {"url": image_to_data_url(prepared)}})
 
     prompt = f"""
 你是一个严格的 3D 资产评测员。请基于多视角 RGB 图和法线图评价这个 3D 模型。
@@ -91,7 +100,7 @@ def call_vlm(row: dict[str, Any], images: list[Path], model: str, base_url: str,
         f"{base_url.rstrip('/')}/v1/chat/completions",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         json=payload,
-        timeout=180,
+        timeout=timeout,
     )
     response.raise_for_status()
     text = response.json()["choices"][0]["message"]["content"]
@@ -105,7 +114,9 @@ def main() -> None:
     parser.add_argument("--output", default=str(ROOT / "data" / "results" / "asset_scores.jsonl"))
     parser.add_argument("--model", default=None)
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--mock", action="store_true")
+    parser.add_argument("--max-images", type=int, default=8)
+    parser.add_argument("--image-size", type=int, default=512)
+    parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
 
     load_dotenv(ROOT / ".env")
@@ -123,23 +134,20 @@ def main() -> None:
 
     for row in rows:
         uid = row["uid"]
-        images = find_images(uid, Path(args.render_dir))
-        if args.mock:
-            result = mock_score(uid)
-        else:
-            if len(images) < 4:
-                print(f"Skipping {uid}: expected rendered images under {args.render_dir}/{uid}")
-                continue
-            if not api_key:
-                raise SystemExit("Missing LITELLM_API_KEY in .env")
-            result = call_vlm(row, images, model, base_url, api_key)
+        images = find_images(uid, Path(args.render_dir))[: args.max_images]
+        if len(images) < 4:
+            print(f"Skipping {uid}: expected rendered images under {args.render_dir}/{uid}")
+            continue
+        if not api_key:
+            raise SystemExit("Missing LITELLM_API_KEY in .env")
+        result = call_vlm(row, images, model, base_url, api_key, args.image_size, args.timeout)
 
         out = {
             "uid": uid,
             "category": row.get("category"),
             "prompt": row.get("prompt"),
             "local_path": row.get("local_path"),
-            "model": model if not args.mock else "mock",
+            "model": model,
             **result,
         }
         append_jsonl(output, out)

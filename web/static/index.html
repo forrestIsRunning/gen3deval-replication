@@ -11,12 +11,14 @@
   <body>
     <header>
       <div>
-        <h1>Gen3DEval 复线 POC</h1>
-        <p>选择 VLM 和数据集，运行 3D 资产多维评测。</p>
+        <h1>Tripo3D 评测工作台</h1>
+        <p>几何门禁、渲染验证、VLM 语义质量、论文方法论在同一页面审计。</p>
       </div>
     </header>
 
     <main>
+      <section class="kpis" id="kpis"></section>
+
       <section class="panel controls">
         <label>
           VLM
@@ -30,12 +32,24 @@
           Limit
           <input id="limit" type="number" min="1" max="200" value="10" />
         </label>
-        <label class="check">
-          <input id="mock" type="checkbox" checked />
-          Mock
-        </label>
-        <button id="run">Run</button>
+        <button id="run">Run VLM</button>
         <button id="geometryRun">Geometry</button>
+      </section>
+
+      <section class="metric-map">
+        <div class="panel">
+          <h2>指标分层</h2>
+          <div class="pill-grid">
+            <div title="直接从 3D 文件解析 mesh，计算顶点、面、包围盒、拓扑等，不依赖 VLM。"><b>Level 0</b><span>几何客观指标：加载、面数、bbox、退化面、watertight</span></div>
+            <div title="用 Blender 统一相机和光照渲染 RGB/Normal，多视角图片是后续 VLM 判断的证据。"><b>Level 1</b><span>渲染代理指标：RGB/Normal 成功率，多视角证据</span></div>
+            <div title="VLM 读取真实渲染图，按 rubric 输出外观、表面、还原度、一致性等评分。"><b>Level 2</b><span>VLM 指标：外观、表面、文本/图片还原、多视角一致</span></div>
+            <div title="LLM 只汇总已有指标和 VLM reason，生成报告，不直接凭空给 3D 打分。"><b>Level 3</b><span>LLM 报告：失败归因、版本比较、研发建议</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>arXiv 覆盖</h2>
+          <div id="literatureBars" class="bars"></div>
+        </div>
       </section>
 
       <section class="grid">
@@ -59,19 +73,45 @@
         </div>
       </section>
 
+      <section class="grid">
+        <div class="panel">
+          <h2>几何分布</h2>
+          <canvas id="geometryChart"></canvas>
+        </div>
+        <div class="panel">
+          <h2>渲染验证</h2>
+          <div id="renderSummary" class="summary"></div>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>uid</th>
+                  <th>RGB</th>
+                  <th>Normal</th>
+                  <th>Complete</th>
+                </tr>
+              </thead>
+              <tbody id="renderRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <section class="panel">
         <h2>可计算几何指标</h2>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>uid</th>
-                <th>faces</th>
-                <th>vertices</th>
-                <th>components</th>
-                <th>watertight</th>
-                <th>aspect</th>
-                <th>area</th>
+                <th title="Objaverse 资产唯一 ID。">uid</th>
+                <th title="LVIS 类别，用作 prompt 和分组分析。">category</th>
+                <th title="mesh 三角面数量。由 trimesh 读取模型后统计 faces，衡量复杂度和渲染成本。">faces</th>
+                <th title="mesh 顶点数量。由 trimesh 统计 vertices，衡量模型复杂度。">vertices</th>
+                <th title="mesh 是否封闭。trimesh.is_watertight，打印/仿真/CAD 场景更重要。">watertight</th>
+                <th title="面朝向是否一致。trimesh.is_winding_consistent，影响法线、阴影和导出质量。">winding</th>
+                <th title="包围盒最长边 / 最短边。用于发现极端扁平或尺度异常模型。">aspect</th>
+                <th title="面积接近 0 的退化面数量。用于发现坏 mesh 和导出问题。">degenerate</th>
+                <th title="mesh 表面积。由 trimesh.area 计算，可辅助发现尺度异常。">area</th>
               </tr>
             </thead>
             <tbody id="geometryRows"></tbody>
