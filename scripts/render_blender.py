@@ -126,15 +126,27 @@ def render_views(bpy, mathutils, uid: str, out_dir: Path, views: int, resolution
         scene.view_layers[0].use_pass_normal = False
         bpy.ops.render.render(write_still=True)
 
-    scene.view_layers[0].use_pass_normal = True
-    scene.use_nodes = True
-    tree = scene.node_tree
-    tree.nodes.clear()
-    render_layers = tree.nodes.new("CompositorNodeRLayers")
-    normalize = tree.nodes.new("CompositorNodeNormalize")
-    composite = tree.nodes.new("CompositorNodeComposite")
-    tree.links.new(render_layers.outputs["Normal"], normalize.inputs[0])
-    tree.links.new(normalize.outputs[0], composite.inputs[0])
+    normal_mat = bpy.data.materials.new("Gen3D_Normal_Debug_Material")
+    normal_mat.use_nodes = True
+    nodes = normal_mat.node_tree.nodes
+    nodes.clear()
+    geom = nodes.new("ShaderNodeNewGeometry")
+    mapping = nodes.new("ShaderNodeVectorMath")
+    mapping.operation = "MULTIPLY_ADD"
+    mapping.inputs[1].default_value = (0.5, 0.5, 0.5)
+    mapping.inputs[2].default_value = (0.5, 0.5, 0.5)
+    emission = nodes.new("ShaderNodeEmission")
+    output = nodes.new("ShaderNodeOutputMaterial")
+    normal_mat.node_tree.links.new(geom.outputs["Normal"], mapping.inputs[0])
+    normal_mat.node_tree.links.new(mapping.outputs[0], emission.inputs["Color"])
+    normal_mat.node_tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+
+    original_materials = {}
+    for obj in bpy.context.scene.objects:
+        if obj.type == "MESH":
+            original_materials[obj.name] = list(obj.data.materials)
+            obj.data.materials.clear()
+            obj.data.materials.append(normal_mat)
 
     for idx in range(views):
         azimuth = (2 * math.pi * idx) / views
@@ -146,6 +158,12 @@ def render_views(bpy, mathutils, uid: str, out_dir: Path, views: int, resolution
         look_at(camera, (0, 0, 0), mathutils)
         scene.render.filepath = str(normal_dir / f"view_{idx:02d}.png")
         bpy.ops.render.render(write_still=True)
+
+    for obj in bpy.context.scene.objects:
+        if obj.type == "MESH" and obj.name in original_materials:
+            obj.data.materials.clear()
+            for mat in original_materials[obj.name]:
+                obj.data.materials.append(mat)
 
 
 def main() -> None:

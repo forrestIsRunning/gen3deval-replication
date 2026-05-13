@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 .DS_Store
+.idea/
 data/raw/
 data/renders/
 data/results/
