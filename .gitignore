@@ -11,3 +11,4 @@ data/processed/*.jsonl
 !data/processed/.gitkeep
 paper/*.pdf
 paper/*.txt
+paper/arxiv_survey/**/*.pdf
