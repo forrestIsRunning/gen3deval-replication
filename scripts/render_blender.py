@@ -50,29 +50,35 @@ def normalize_scene(bpy, mathutils) -> None:
     meshes = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
     if not meshes:
         raise ValueError("No mesh objects found after import")
-    bpy.ops.object.select_all(action="DESELECT")
+
+    # Bake object transforms into mesh vertices. Objaverse assets often use nested
+    # transforms; editing object.location alone can leave the visible mesh off-camera.
     for obj in meshes:
-        obj.select_set(True)
-    bpy.context.view_layer.objects.active = meshes[0]
+        obj.data.transform(obj.matrix_world)
+        obj.matrix_world.identity()
+
+    for obj in meshes:
+        obj.select_set(False)
 
     min_corner = mathutils.Vector((float("inf"), float("inf"), float("inf")))
     max_corner = mathutils.Vector((float("-inf"), float("-inf"), float("-inf")))
     for obj in meshes:
-        for corner in obj.bound_box:
-            world = obj.matrix_world @ mathutils.Vector(corner)
-            min_corner.x = min(min_corner.x, world.x)
-            min_corner.y = min(min_corner.y, world.y)
-            min_corner.z = min(min_corner.z, world.z)
-            max_corner.x = max(max_corner.x, world.x)
-            max_corner.y = max(max_corner.y, world.y)
-            max_corner.z = max(max_corner.z, world.z)
+        for vertex in obj.data.vertices:
+            co = vertex.co
+            min_corner.x = min(min_corner.x, co.x)
+            min_corner.y = min(min_corner.y, co.y)
+            min_corner.z = min(min_corner.z, co.z)
+            max_corner.x = max(max_corner.x, co.x)
+            max_corner.y = max(max_corner.y, co.y)
+            max_corner.z = max(max_corner.z, co.z)
 
     center = (min_corner + max_corner) / 2
     size = max(max_corner.x - min_corner.x, max_corner.y - min_corner.y, max_corner.z - min_corner.z)
     scale = 2.2 / size if size > 0 else 1.0
     for obj in meshes:
-        obj.location -= center
-        obj.scale *= scale
+        for vertex in obj.data.vertices:
+            vertex.co = (vertex.co - center) * scale
+        obj.data.update()
 
 
 def setup_camera_light(bpy, mathutils):
@@ -98,12 +104,18 @@ def look_at(obj, target, mathutils) -> None:
 
 def render_views(bpy, mathutils, uid: str, out_dir: Path, views: int, resolution: int) -> None:
     scene = bpy.context.scene
-    scene.render.engine = "CYCLES"
-    scene.cycles.samples = 32
+    scene.render.engine = "BLENDER_WORKBENCH"
+    scene.display.shading.light = "STUDIO"
+    scene.display.shading.color_type = "MATERIAL"
+    scene.display.shading.background_type = "VIEWPORT"
+    scene.display.shading.background_color = (1, 1, 1)
     scene.render.resolution_x = resolution
     scene.render.resolution_y = resolution
-    scene.view_settings.view_transform = "Filmic"
-    scene.render.film_transparent = True
+    scene.view_settings.view_transform = "Standard"
+    scene.view_settings.look = "Medium High Contrast"
+    scene.view_settings.exposure = 0
+    scene.view_settings.gamma = 1
+    scene.render.film_transparent = False
 
     camera = setup_camera_light(bpy, mathutils)
     radius = 3.2
@@ -140,6 +152,7 @@ def render_views(bpy, mathutils, uid: str, out_dir: Path, views: int, resolution
     normal_mat.node_tree.links.new(geom.outputs["Normal"], mapping.inputs[0])
     normal_mat.node_tree.links.new(mapping.outputs[0], emission.inputs["Color"])
     normal_mat.node_tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    scene.display.shading.color_type = "TEXTURE"
 
     original_materials = {}
     for obj in bpy.context.scene.objects:

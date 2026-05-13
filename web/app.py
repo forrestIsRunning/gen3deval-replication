@@ -238,7 +238,8 @@ def model_file(uid: str):
                 candidates.append(Path(row["local_path"]))
     for path in candidates:
         if path.exists():
-            return FileResponse(path)
+            media_type = "model/gltf-binary" if path.suffix.lower() == ".glb" else None
+            return FileResponse(path, media_type=media_type)
     return JSONResponse({"error": f"Model file not found for {uid}"}, status_code=404)
 
 
