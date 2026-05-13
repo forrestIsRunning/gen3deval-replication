@@ -87,7 +87,7 @@ main {
 
 .controls {
   display: grid;
-  grid-template-columns: 1.45fr 2fr 1.45fr 160px 120px;
+  grid-template-columns: 1.35fr 1.9fr 1.35fr 150px 160px 120px;
   gap: 12px;
   align-items: end;
   margin-bottom: 16px;
@@ -141,6 +141,14 @@ main {
   display: block;
 }
 
+.context-box small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .context-box span {
   color: var(--muted);
   font-size: 12px;
@@ -186,6 +194,18 @@ button {
   background: var(--accent);
   color: #fff;
   cursor: pointer;
+}
+
+button.secondary {
+  border-color: var(--green);
+  background: var(--green);
+}
+
+button:disabled {
+  border-color: var(--line);
+  background: #e5e7eb;
+  color: var(--muted);
+  cursor: not-allowed;
 }
 
 .check {
@@ -360,6 +380,23 @@ canvas {
   display: grid;
   gap: 14px;
   margin-top: 12px;
+}
+
+.render-gate {
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  padding: 12px;
+}
+
+.render-gate b {
+  display: block;
+  font-size: 13px;
+}
+
+.render-gate p {
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .view-group h3 {

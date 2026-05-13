@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import shutil
 import subprocess
 import sys
 import threading
@@ -36,6 +37,13 @@ class RunRequest(BaseModel):
 class GeometryRequest(BaseModel):
     manifest: str
     limit: int | None = None
+
+
+class RenderRequest(BaseModel):
+    manifest: str
+    uid: str | None = None
+    views: int = 4
+    resolution: int = 768
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -117,6 +125,17 @@ def manifest_rows(manifest: str) -> list[dict]:
     return read_jsonl(path)
 
 
+def render_view_counts(uid: str) -> dict:
+    base = DATA / "renders" / uid
+    rgb = sorted((base / "rgb").glob("*.png"))
+    normal = sorted((base / "normal").glob("*.png"))
+    return {
+        "rgb_views": len(rgb),
+        "normal_views": len(normal),
+        "render_complete": len(rgb) >= 4 and len(normal) >= 4,
+    }
+
+
 @app.get("/api/assets")
 def assets(manifest: str = "data/processed/manifest_render10.jsonl") -> dict:
     rows = manifest_rows(manifest)
@@ -124,21 +143,25 @@ def assets(manifest: str = "data/processed/manifest_render10.jsonl") -> dict:
     scored_by_uid: dict[str, list[str]] = {}
     for row in scores:
         scored_by_uid.setdefault(row.get("uid"), []).append(row.get("model"))
-    return {
-        "assets": [
+    items = []
+    for row in rows:
+        uid = row.get("uid")
+        if not uid:
+            continue
+        render = render_view_counts(uid)
+        items.append(
             {
-                "uid": row.get("uid"),
+                "uid": uid,
                 "category": row.get("category"),
                 "prompt": row.get("prompt"),
                 "local_path": row.get("local_path"),
                 "has_model": bool(row.get("local_path") and Path(row["local_path"]).exists()),
-                "has_render": (DATA / "renders" / row.get("uid", "") / "rgb").exists(),
-                "scored_models": sorted(m for m in scored_by_uid.get(row.get("uid"), []) if m),
+                "has_render": render["render_complete"],
+                "render": render,
+                "scored_models": sorted(m for m in scored_by_uid.get(uid, []) if m),
             }
-            for row in rows
-            if row.get("uid")
-        ]
-    }
+        )
+    return {"assets": items}
 
 
 def run_job(job_id: str, cmd: list[str]) -> None:
@@ -182,13 +205,20 @@ def evaluation(
     if model:
         score_rows = [row for row in score_rows if row.get("model") == model]
 
-    render_csv = DATA / "results" / "render_success_10.csv"
     render_rows = []
-    if render_csv.exists():
-        import csv
-
-        with render_csv.open("r", encoding="utf-8") as f:
-            render_rows = [row for row in csv.DictReader(f) if row.get("uid") in uids]
+    for row in rows:
+        uid = row.get("uid")
+        if not uid:
+            continue
+        counts = render_view_counts(uid)
+        render_rows.append(
+            {
+                "uid": uid,
+                "rgb_views": counts["rgb_views"],
+                "normal_views": counts["normal_views"],
+                "render_complete": counts["render_complete"],
+            }
+        )
     render_complete = sum(1 for row in render_rows if str(row.get("render_complete")).lower() == "true")
 
     score_sums: dict[str, float] = {}
@@ -232,8 +262,10 @@ def asset_evaluation(uid: str, model: str | None = None) -> dict:
 @app.get("/api/views/{uid}")
 def views(uid: str) -> dict:
     base = DATA / "renders" / uid
+    counts = render_view_counts(uid)
     return {
         "uid": uid,
+        **counts,
         "rgb": [f"/data/renders/{uid}/rgb/{path.name}" for path in sorted((base / "rgb").glob("*.png"))],
         "normal": [f"/data/renders/{uid}/normal/{path.name}" for path in sorted((base / "normal").glob("*.png"))],
     }
@@ -442,6 +474,17 @@ def run(req: RunRequest) -> dict:
         rows = [row for row in manifest_rows(req.manifest) if row.get("uid") == req.uid]
         if not rows:
             return {"ok": False, "error": f"UID not found in manifest: {req.uid}"}
+        counts = render_view_counts(req.uid)
+        if not counts["render_complete"]:
+            return {
+                "ok": False,
+                "error": (
+                    "Selected asset is not ready for VLM evaluation: "
+                    f"RGB views={counts['rgb_views']}, Normal views={counts['normal_views']}. "
+                    "Render it first."
+                ),
+                "render": counts,
+            }
         run_manifest = DATA / "processed" / "_vlm_tmp" / "manifests" / f"_run_{req.uid}.jsonl"
         run_manifest.parent.mkdir(parents=True, exist_ok=True)
         run_manifest.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n", encoding="utf-8")
@@ -465,6 +508,53 @@ def run(req: RunRequest) -> dict:
     JOBS[job_id] = {
         "id": job_id,
         "kind": "vlm",
+        "status": "queued",
+        "stdout": "",
+        "stderr": "",
+        "returncode": None,
+        "created_at": time.time(),
+    }
+    thread = threading.Thread(target=run_job, args=(job_id, cmd), daemon=True)
+    thread.start()
+    return {"ok": True, "job_id": job_id, "status": "queued"}
+
+
+@app.post("/api/render/run")
+def run_render(req: RenderRequest) -> dict:
+    manifest = ROOT / req.manifest
+    if not manifest.exists():
+        return {"ok": False, "error": f"Manifest not found: {req.manifest}"}
+    if not shutil.which("blender"):
+        return {"ok": False, "error": "Blender executable not found. Install Blender before rendering."}
+
+    run_manifest = manifest
+    if req.uid:
+        rows = [row for row in manifest_rows(req.manifest) if row.get("uid") == req.uid]
+        if not rows:
+            return {"ok": False, "error": f"UID not found in manifest: {req.uid}"}
+        run_manifest = DATA / "processed" / "_vlm_tmp" / "manifests" / f"_render_{req.uid}.jsonl"
+        run_manifest.parent.mkdir(parents=True, exist_ok=True)
+        run_manifest.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n", encoding="utf-8")
+
+    cmd = [
+        "blender",
+        "-b",
+        "--python",
+        str(ROOT / "scripts" / "render_blender.py"),
+        "--",
+        "--manifest",
+        str(run_manifest),
+        "--output-dir",
+        str(DATA / "renders"),
+        "--views",
+        str(req.views),
+        "--resolution",
+        str(req.resolution),
+    ]
+    job_id = uuid.uuid4().hex
+    JOBS[job_id] = {
+        "id": job_id,
+        "kind": "render",
         "status": "queued",
         "stdout": "",
         "stderr": "",

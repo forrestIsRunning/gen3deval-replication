@@ -29,6 +29,7 @@ The project is a public-data Gen3DEval-style 3D evaluation pipeline:
   - `qwen3-vl-235b-a22b-thinking`
 - Treat the frontend as a view over `manifest + uid + model`; charts must not silently mix unrelated models or datasets.
 - Geometry metrics are computed directly; VLM is for semantic/visual fidelity; LLM is only for summarizing existing evidence.
+- Gate order is asset exists -> geometry computable -> RGB/Normal renders complete -> VLM score -> LLM summary.
 
 ## Environment
 
@@ -83,7 +84,10 @@ Use the UI in this order:
 1. Select `Manifest`.
 2. Select one asset `uid`.
 3. Select VLM model.
-4. Click `Run Selected VLM`.
+4. If RGB/Normal renders are missing, click `Render Selected`.
+5. Click `Run Selected VLM`.
+
+Never run VLM scoring for an asset without RGB and Normal renders. Missing renders mean the VLM has no visual evidence; the correct action is to render first.
 
 Expected panels:
 
@@ -194,3 +198,4 @@ Read only when needed:
 - `docs/08_文献综述与指标决策.md` for arXiv survey conclusions.
 - `docs/11_manifest说明.md` for manifest meanings.
 - `docs/12_前端评测上下文与可视化说明.md` for UI context and chart semantics.
+- `docs/13_self_evolving_render_gate.md` for render gating and the no-render/no-VLM rule.

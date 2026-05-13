@@ -71,6 +71,8 @@ uv run uvicorn web.app:app --host 127.0.0.1 --port 7861 --reload
 3. 选择 `VLM`；
 4. 点击 `Run Selected VLM`。
 
+如果 `多视角渲染` 显示 `RGB 尚未渲染` 或 `Normal 尚未渲染`，不能直接做 VLM 评测。VLM 必须看真实 RGB/Normal 证据图，否则评分没有依据。此时先点击 `Render Selected`，等 Blender 渲染完成后再运行 `Run Selected VLM`。
+
 当前支持的 VLM：
 
 - `qwen3-vl-235b-a22b-instruct`
@@ -84,6 +86,8 @@ uv run uvicorn web.app:app --host 127.0.0.1 --port 7861 --reload
 - `几何分布`：当前 manifest 的面数区间分布；
 - `渲染验证`：当前 manifest 的 RGB/Normal 渲染完成情况；
 - `可计算几何指标`：面数、顶点数、watertight、winding、aspect、degenerate、area。
+
+评测门禁顺序是：资产存在 -> 几何可计算 -> RGB/Normal 渲染完整 -> VLM 评分 -> LLM 汇总。没有渲染图时不要让 VLM 凭空打分。
 
 ## 常用 Manifest
 
@@ -145,6 +149,8 @@ uv run python scripts/analyze_render_success.py \
   --manifest data/processed/manifest_render10.jsonl \
   --render-dir data/renders
 ```
+
+也可以在前端选择一个资产后点击 `Render Selected`，后端会调用同一份 Blender 渲染脚本，只渲染当前资产。
 
 ## VLM 单资产评分
 
@@ -210,3 +216,4 @@ content-type: model/gltf-binary
 - `docs/10_arxiv论文清单.md`
 - `docs/11_manifest说明.md`
 - `docs/12_前端评测上下文与可视化说明.md`
+- `docs/13_self_evolving_render_gate.md`

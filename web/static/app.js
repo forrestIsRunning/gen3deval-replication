@@ -132,6 +132,11 @@ function selectedAsset() {
   return assetRows.find((row) => row.uid === uid);
 }
 
+function selectedAssetRenderReady() {
+  const asset = selectedAsset();
+  return Boolean(asset?.has_render);
+}
+
 function contextText() {
   const model = document.getElementById("model").value;
   const manifest = selectedManifestItem();
@@ -147,12 +152,20 @@ function contextText() {
 
 function renderContext() {
   const ctx = contextText();
+  const asset = selectedAsset();
+  const render = asset?.render || {};
+  const renderText = asset
+    ? asset.has_render
+      ? `已渲染：RGB ${render.rgb_views || 0} / Normal ${render.normal_views || 0}，可以运行 VLM。`
+      : `尚未渲染：RGB ${render.rgb_views || 0} / Normal ${render.normal_views || 0}。请先点击 Render Selected。`
+    : "选择资产后检查渲染状态。";
   document.getElementById("contextBox").innerHTML = `
     <div><span>Manifest</span><b>${ctx.manifest}</b></div>
     <div><span>Asset</span><b>${ctx.uid ? `${ctx.uid.slice(0, 12)} · ${ctx.category}` : "未选择"}</b></div>
-    <div><span>VLM</span><b>${ctx.model}</b></div>
+    <div><span>VLM / Render</span><b>${ctx.model}</b><small>${renderText}</small></div>
     <p>${ctx.prompt || "选择 manifest 和资产后，VLM 将只对当前资产的真实多视角渲染打分。"}</p>
   `;
+  updateActionState();
 }
 
 function scoreAverages(scores) {
@@ -334,7 +347,15 @@ async function renderViews(uid) {
   ];
   box.innerHTML = blocks
     .map(([label, images]) => {
-      if (!images.length) return `<div class="view-group"><h3>${label}</h3><p>尚未渲染。</p></div>`;
+      if (!images.length) {
+        return `
+          <div class="view-group render-gate">
+            <h3>${label}</h3>
+            <b>尚未渲染</b>
+            <p>VLM 评分必须基于真实 RGB/Normal 多视角图。当前缺少 ${label} 证据，不能直接评分。</p>
+          </div>
+        `;
+      }
       return `
         <div class="view-group">
           <h3>${label}</h3>
@@ -345,6 +366,19 @@ async function renderViews(uid) {
       `;
     })
     .join("");
+  updateActionState(data);
+}
+
+function updateActionState(viewData = null) {
+  const run = document.getElementById("run");
+  const render = document.getElementById("renderAsset");
+  const asset = selectedAsset();
+  const ready = viewData ? viewData.render_complete : selectedAssetRenderReady();
+  render.classList.add("secondary");
+  render.disabled = !asset;
+  run.disabled = !asset || !ready;
+  run.title = ready ? "基于当前资产 RGB/Normal 渲染图运行 VLM 评测。" : "当前资产尚未完成 RGB/Normal 渲染，不能运行 VLM。";
+  render.title = asset ? "为当前资产生成真实 RGB/Normal 多视角渲染。" : "请先选择资产。";
 }
 
 function renderGeometry(rows) {
@@ -478,6 +512,30 @@ async function init() {
   });
   document.getElementById("asset").addEventListener("change", refreshContext);
 
+  document.getElementById("renderAsset").addEventListener("click", async () => {
+    const req = {
+      manifest: document.getElementById("manifest").value,
+      uid: document.getElementById("asset").value,
+      views: 4,
+      resolution: 768,
+    };
+    if (!req.uid) return;
+    document.getElementById("log").textContent = "rendering selected asset with Blender...";
+    const result = await getJson("/api/render/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+    if (!result.ok) {
+      document.getElementById("log").textContent = result.error || "render request failed";
+      return;
+    }
+    if (result.job_id) await pollJob(result.job_id);
+    await loadAssets();
+    await loadEvaluation();
+    await refreshContext();
+  });
+
   document.getElementById("run").addEventListener("click", async () => {
     const req = {
       model: document.getElementById("model").value,
@@ -485,12 +543,20 @@ async function init() {
       uid: document.getElementById("asset").value,
     };
     if (!req.uid) return;
+    if (!selectedAssetRenderReady()) {
+      document.getElementById("log").textContent = "当前资产尚未完成 RGB/Normal 多视角渲染。请先点击 Render Selected。";
+      return;
+    }
     document.getElementById("log").textContent = "running real VLM evaluation for selected asset...";
     const result = await getJson("/api/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req),
     });
+    if (!result.ok) {
+      document.getElementById("log").textContent = result.error || "VLM request failed";
+      return;
+    }
     if (result.job_id) await pollJob(result.job_id);
     await loadAssets();
     await loadEvaluation();
