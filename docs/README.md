@@ -9,8 +9,9 @@
 3. `12_前端评测上下文与可视化说明.md`：前端如何按 `manifest + uid + model` 过滤。
 4. `13_self_evolving_render_gate.md`：为什么未渲染不能 VLM，如何先渲染再评分。
 5. `14_self_evolving_render_quality.md`：为什么文件齐全还要做渲染质量自检。
-6. `09_Tripo3D评测指标蓝图.md`：完整指标分层。
-7. `08_文献综述与指标决策.md`：论文方法论和指标选择。
+6. `15_codebase_audit.md`：全代码库审计后的优化清单。
+7. `09_Tripo3D评测指标蓝图.md`：完整指标分层。
+8. `08_文献综述与指标决策.md`：论文方法论和指标选择。
 
 ## 当前有效原则
 

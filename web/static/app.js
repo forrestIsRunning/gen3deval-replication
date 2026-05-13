@@ -117,8 +117,10 @@ function renderAssetSelect() {
   assetRows.forEach((row) => {
     const option = document.createElement("option");
     option.value = row.uid;
+    const readiness = row.readiness || {};
     const badges = [
       row.has_render ? "已渲染" : "未渲染",
+      readiness.ready_for_vlm ? "可评测" : "待处理",
       row.scored_models?.length ? `已评分 ${row.scored_models.length}` : "未评分",
     ].join(" · ");
     option.textContent = `${row.uid.slice(0, 8)} · ${row.category || "unknown"} · ${badges}`;
@@ -134,7 +136,7 @@ function selectedAsset() {
 
 function selectedAssetRenderReady() {
   const asset = selectedAsset();
-  return Boolean(asset?.has_render && asset?.render_quality?.quality_pass);
+  return Boolean(asset?.readiness?.ready_for_vlm);
 }
 
 function contextText() {
@@ -154,10 +156,11 @@ function renderContext() {
   const ctx = contextText();
   const asset = selectedAsset();
   const render = asset?.render || {};
+  const readiness = asset?.readiness || {};
   const renderText = asset
-    ? asset.has_render
-      ? `已渲染：RGB ${render.rgb_views || 0} / Normal ${render.normal_views || 0}；质量自检 ${asset.render_quality?.quality_pass ? "通过" : "需复查"}。`
-      : `尚未渲染：RGB ${render.rgb_views || 0} / Normal ${render.normal_views || 0}。请先点击 Render Selected。`
+    ? readiness.ready_for_vlm
+      ? `Ready：RGB ${render.rgb_views || 0} / Normal ${render.normal_views || 0}，可运行 VLM。`
+      : `Blocked：${(readiness.blockers || []).join("；") || "请检查资产状态"}。`
     : "选择资产后检查渲染状态。";
   document.getElementById("contextBox").innerHTML = `
     <div><span>Manifest</span><b>${ctx.manifest}</b></div>
@@ -553,7 +556,8 @@ async function init() {
     };
     if (!req.uid) return;
     if (!selectedAssetRenderReady()) {
-      document.getElementById("log").textContent = "当前资产尚未完成 RGB/Normal 多视角渲染，或渲染质量自检未通过。请先点击 Render Selected 或检查视图。";
+      const blockers = selectedAsset()?.readiness?.blockers || [];
+      document.getElementById("log").textContent = `当前资产还不能 VLM 评测：${blockers.join("；") || "readiness gate 未通过"}`;
       return;
     }
     document.getElementById("log").textContent = "running real VLM evaluation for selected asset...";

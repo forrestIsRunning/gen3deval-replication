@@ -16,6 +16,7 @@ from pydantic import BaseModel
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 JOBS: dict[str, dict] = {}
+QUALITY_CACHE: dict[str, tuple[tuple, dict]] = {}
 
 app = FastAPI(title="Gen3DEval Replication POC")
 app.mount("/static", StaticFiles(directory=ROOT / "web" / "static"), name="static")
@@ -182,8 +183,14 @@ def summarize_render_images(paths: list[Path]) -> dict:
 
 def render_quality(uid: str) -> dict:
     base = DATA / "renders" / uid
-    rgb = summarize_render_images(sorted((base / "rgb").glob("*.png")))
-    normal = summarize_render_images(sorted((base / "normal").glob("*.png")))
+    rgb_paths = sorted((base / "rgb").glob("*.png"))
+    normal_paths = sorted((base / "normal").glob("*.png"))
+    fingerprint = tuple((str(path), path.stat().st_mtime_ns, path.stat().st_size) for path in rgb_paths + normal_paths)
+    cached = QUALITY_CACHE.get(uid)
+    if cached and cached[0] == fingerprint:
+        return cached[1]
+    rgb = summarize_render_images(rgb_paths)
+    normal = summarize_render_images(normal_paths)
     issues = []
     if rgb["count"] < 4:
         issues.append(f"RGB views missing: {rgb['count']}/4")
@@ -195,7 +202,57 @@ def render_quality(uid: str) -> dict:
         issues.append(f"Normal blank/low-information views: {normal['blank_views']}")
     if normal["channel_std_mean"] is not None and normal["channel_std_mean"] < 5:
         issues.append("Normal color variation is too low")
-    return {"rgb": rgb, "normal": normal, "quality_pass": not issues, "issues": issues}
+    result = {"rgb": rgb, "normal": normal, "quality_pass": not issues, "issues": issues}
+    QUALITY_CACHE[uid] = (fingerprint, result)
+    return result
+
+
+def geometry_status(uid: str) -> dict:
+    rows = [row for row in read_jsonl(DATA / "results" / "geometry_metrics.jsonl") if row.get("uid") == uid]
+    if not rows:
+        return {"ok": False, "missing": True, "error": "geometry metrics missing"}
+    row = rows[0]
+    return {
+        "ok": bool(row.get("ok")),
+        "missing": False,
+        "error": row.get("error"),
+        "geometry": row.get("geometry"),
+    }
+
+
+def asset_readiness(row: dict) -> dict:
+    uid = row.get("uid", "")
+    blockers = []
+    actions = []
+    local_path = row.get("local_path")
+    has_model = bool(local_path and Path(local_path).exists())
+    geometry = geometry_status(uid)
+    render = render_view_counts(uid)
+    quality = render_quality(uid) if render["render_complete"] else None
+
+    if not has_model:
+        blockers.append("模型文件不存在或 local_path 为空")
+        actions.append("download_assets")
+    if not geometry["ok"]:
+        blockers.append("几何指标缺失或计算失败")
+        actions.append("run_geometry")
+    if not render["render_complete"]:
+        blockers.append(f"多视角渲染不完整：RGB {render['rgb_views']}/4，Normal {render['normal_views']}/4")
+        actions.append("render_selected")
+    elif quality and not quality["quality_pass"]:
+        blockers.append("渲染质量自检未通过")
+        actions.append("inspect_or_rerender")
+
+    return {
+        "ready_for_vlm": not blockers,
+        "status": "ready" if not blockers else "blocked",
+        "blockers": blockers,
+        "actions": actions,
+        "has_model": has_model,
+        "geometry": geometry,
+        "render": render,
+        "render_quality": quality,
+    }
 
 
 @app.get("/api/assets")
@@ -210,18 +267,18 @@ def assets(manifest: str = "data/processed/manifest_render10.jsonl") -> dict:
         uid = row.get("uid")
         if not uid:
             continue
-        render = render_view_counts(uid)
-        quality = render_quality(uid) if render["render_complete"] else None
+        readiness = asset_readiness(row)
         items.append(
             {
                 "uid": uid,
                 "category": row.get("category"),
                 "prompt": row.get("prompt"),
                 "local_path": row.get("local_path"),
-                "has_model": bool(row.get("local_path") and Path(row["local_path"]).exists()),
-                "has_render": render["render_complete"],
-                "render": render,
-                "render_quality": quality,
+                "has_model": readiness["has_model"],
+                "has_render": readiness["render"]["render_complete"],
+                "render": readiness["render"],
+                "render_quality": readiness["render_quality"],
+                "readiness": readiness,
                 "scored_models": sorted(m for m in scored_by_uid.get(uid, []) if m),
             }
         )
@@ -322,6 +379,7 @@ def asset_evaluation(uid: str, model: str | None = None) -> dict:
         "uid": uid,
         "geometry": geometry_rows[0] if geometry_rows else None,
         "scores": score_rows,
+        "readiness": asset_readiness({"uid": uid, "local_path": geometry_rows[0].get("local_path") if geometry_rows else None}),
         "views": views(uid),
     }
 
@@ -543,24 +601,12 @@ def run(req: RunRequest) -> dict:
         rows = [row for row in manifest_rows(req.manifest) if row.get("uid") == req.uid]
         if not rows:
             return {"ok": False, "error": f"UID not found in manifest: {req.uid}"}
-        counts = render_view_counts(req.uid)
-        if not counts["render_complete"]:
+        readiness = asset_readiness(rows[0])
+        if not readiness["ready_for_vlm"]:
             return {
                 "ok": False,
-                "error": (
-                    "Selected asset is not ready for VLM evaluation: "
-                    f"RGB views={counts['rgb_views']}, Normal views={counts['normal_views']}. "
-                    "Render it first."
-                ),
-                "render": counts,
-            }
-        quality = render_quality(req.uid)
-        if not quality["quality_pass"]:
-            return {
-                "ok": False,
-                "error": "Selected asset render quality check failed. Re-render or inspect the views before VLM evaluation.",
-                "render": counts,
-                "quality": quality,
+                "error": "Selected asset is not ready for VLM evaluation.",
+                "readiness": readiness,
             }
         run_manifest = DATA / "processed" / "_vlm_tmp" / "manifests" / f"_run_{req.uid}.jsonl"
         run_manifest.parent.mkdir(parents=True, exist_ok=True)

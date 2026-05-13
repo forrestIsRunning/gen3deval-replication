@@ -208,3 +208,4 @@ Read only when needed:
 - `docs/12_前端评测上下文与可视化说明.md` for UI context and chart semantics.
 - `docs/13_self_evolving_render_gate.md` for render gating and the no-render/no-VLM rule.
 - `docs/14_self_evolving_render_quality.md` for render image quality checks before VLM.
+- `docs/15_codebase_audit.md` for the current optimization backlog.

@@ -226,3 +226,4 @@ content-type: model/gltf-binary
 - `docs/12_前端评测上下文与可视化说明.md`
 - `docs/13_self_evolving_render_gate.md`
 - `docs/14_self_evolving_render_quality.md`
+- `docs/15_codebase_audit.md`
