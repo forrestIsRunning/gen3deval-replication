@@ -1,0 +1,12 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+.DS_Store
+data/raw/
+data/renders/
+data/results/
+data/processed/*.jsonl
+!data/processed/.gitkeep
+paper/*.pdf
+paper/*.txt

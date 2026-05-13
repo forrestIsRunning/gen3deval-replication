@@ -1,0 +1,26 @@
+dataset:
+  manifest: data/processed/manifest_120.jsonl
+  min_assets: 120
+  source: objaverse-lvis
+
+render:
+  views: 4
+  resolution: 768
+  rgb_subdir: rgb
+  normal_subdir: normal
+
+judge:
+  base_url_env: LITELLM_BASE_URL
+  api_key_env: LITELLM_API_KEY
+  model_env: GEN3D_VLM_MODEL
+  default_model: qwen3-vl-235b-a22b-thinking
+  temperature: 0
+  max_tokens: 1200
+
+metrics:
+  dimensions:
+    - appearance
+    - surface
+    - text_fidelity
+  elo_k: 32
+  initial_rating: 1000

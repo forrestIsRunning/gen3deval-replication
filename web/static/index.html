@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gen3DEval POC</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Gen3DEval 复线 POC</h1>
+        <p>选择 VLM 和数据集，运行 3D 资产多维评测。</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel controls">
+        <label>
+          VLM
+          <select id="model"></select>
+        </label>
+        <label>
+          Manifest
+          <select id="manifest"></select>
+        </label>
+        <label>
+          Limit
+          <input id="limit" type="number" min="1" max="200" value="10" />
+        </label>
+        <label class="check">
+          <input id="mock" type="checkbox" checked />
+          Mock
+        </label>
+        <button id="run">Run</button>
+        <button id="geometryRun">Geometry</button>
+      </section>
+
+      <section class="grid">
+        <div class="panel viewer">
+          <div class="section-head">
+            <h2>3D 预览</h2>
+            <select id="asset"></select>
+          </div>
+          <model-viewer
+            id="viewer"
+            camera-controls
+            auto-rotate
+            shadow-intensity="0.8"
+            exposure="1"
+          ></model-viewer>
+        </div>
+
+        <div class="panel">
+          <h2>多维平均分</h2>
+          <canvas id="chart"></canvas>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>可计算几何指标</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>uid</th>
+                <th>faces</th>
+                <th>vertices</th>
+                <th>components</th>
+                <th>watertight</th>
+                <th>aspect</th>
+                <th>area</th>
+              </tr>
+            </thead>
+            <tbody id="geometryRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>样本结果</h2>
+        <div id="cards" class="cards"></div>
+      </section>
+
+      <section class="panel logs">
+        <h2>运行日志</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

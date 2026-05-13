@@ -1,0 +1,25 @@
+[project]
+name = "gen3deval-replication"
+version = "0.1.0"
+description = "Public-data Gen3DEval-style 3D evaluation pipeline and dashboard"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "objaverse>=0.1.7",
+  "pandas>=2.2.0",
+  "requests>=2.32.0",
+  "python-dotenv>=1.0.1",
+  "pillow>=10.4.0",
+  "matplotlib>=3.9.0",
+  "tqdm>=4.66.0",
+  "pyyaml>=6.0.2",
+  "trimesh>=4.5.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

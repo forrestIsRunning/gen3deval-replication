@@ -1,0 +1,176 @@
+import argparse
+import math
+import sys
+from pathlib import Path
+
+
+def parse_args() -> argparse.Namespace:
+    argv = sys.argv
+    if "--" in argv:
+        argv = argv[argv.index("--") + 1 :]
+    else:
+        argv = []
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest", required=True)
+    parser.add_argument("--output-dir", default="data/renders")
+    parser.add_argument("--views", type=int, default=4)
+    parser.add_argument("--resolution", type=int, default=768)
+    return parser.parse_args(argv)
+
+
+def read_jsonl(path: str) -> list[dict]:
+    import json
+
+    rows = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                rows.append(json.loads(line))
+    return rows
+
+
+def clear_scene(bpy) -> None:
+    bpy.ops.object.select_all(action="SELECT")
+    bpy.ops.object.delete()
+
+
+def import_asset(bpy, path: str) -> None:
+    suffix = Path(path).suffix.lower()
+    if suffix == ".glb" or suffix == ".gltf":
+        bpy.ops.import_scene.gltf(filepath=path)
+    elif suffix == ".obj":
+        bpy.ops.wm.obj_import(filepath=path)
+    elif suffix == ".fbx":
+        bpy.ops.import_scene.fbx(filepath=path)
+    else:
+        raise ValueError(f"Unsupported asset format: {path}")
+
+
+def normalize_scene(bpy, mathutils) -> None:
+    meshes = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
+    if not meshes:
+        raise ValueError("No mesh objects found after import")
+    bpy.ops.object.select_all(action="DESELECT")
+    for obj in meshes:
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = meshes[0]
+
+    min_corner = mathutils.Vector((float("inf"), float("inf"), float("inf")))
+    max_corner = mathutils.Vector((float("-inf"), float("-inf"), float("-inf")))
+    for obj in meshes:
+        for corner in obj.bound_box:
+            world = obj.matrix_world @ mathutils.Vector(corner)
+            min_corner.x = min(min_corner.x, world.x)
+            min_corner.y = min(min_corner.y, world.y)
+            min_corner.z = min(min_corner.z, world.z)
+            max_corner.x = max(max_corner.x, world.x)
+            max_corner.y = max(max_corner.y, world.y)
+            max_corner.z = max(max_corner.z, world.z)
+
+    center = (min_corner + max_corner) / 2
+    size = max(max_corner.x - min_corner.x, max_corner.y - min_corner.y, max_corner.z - min_corner.z)
+    scale = 2.2 / size if size > 0 else 1.0
+    for obj in meshes:
+        obj.location -= center
+        obj.scale *= scale
+
+
+def setup_camera_light(bpy, mathutils):
+    light_data = bpy.data.lights.new("KeyLight", type="AREA")
+    light_data.energy = 500
+    light_data.size = 5
+    light = bpy.data.objects.new("KeyLight", light_data)
+    bpy.context.collection.objects.link(light)
+    light.location = (0, -3, 4)
+
+    camera_data = bpy.data.cameras.new("Camera")
+    camera = bpy.data.objects.new("Camera", camera_data)
+    bpy.context.collection.objects.link(camera)
+    bpy.context.scene.camera = camera
+    camera.data.lens = 55
+    return camera
+
+
+def look_at(obj, target, mathutils) -> None:
+    direction = mathutils.Vector(target) - obj.location
+    obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+
+
+def render_views(bpy, mathutils, uid: str, out_dir: Path, views: int, resolution: int) -> None:
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.samples = 32
+    scene.render.resolution_x = resolution
+    scene.render.resolution_y = resolution
+    scene.view_settings.view_transform = "Filmic"
+    scene.render.film_transparent = True
+
+    camera = setup_camera_light(bpy, mathutils)
+    radius = 3.2
+    elevation = math.radians(18)
+
+    rgb_dir = out_dir / uid / "rgb"
+    normal_dir = out_dir / uid / "normal"
+    rgb_dir.mkdir(parents=True, exist_ok=True)
+    normal_dir.mkdir(parents=True, exist_ok=True)
+
+    for idx in range(views):
+        azimuth = (2 * math.pi * idx) / views
+        camera.location = (
+            radius * math.sin(azimuth) * math.cos(elevation),
+            -radius * math.cos(azimuth) * math.cos(elevation),
+            radius * math.sin(elevation),
+        )
+        look_at(camera, (0, 0, 0), mathutils)
+        scene.render.filepath = str(rgb_dir / f"view_{idx:02d}.png")
+        scene.view_layers[0].use_pass_normal = False
+        bpy.ops.render.render(write_still=True)
+
+    scene.view_layers[0].use_pass_normal = True
+    scene.use_nodes = True
+    tree = scene.node_tree
+    tree.nodes.clear()
+    render_layers = tree.nodes.new("CompositorNodeRLayers")
+    normalize = tree.nodes.new("CompositorNodeNormalize")
+    composite = tree.nodes.new("CompositorNodeComposite")
+    tree.links.new(render_layers.outputs["Normal"], normalize.inputs[0])
+    tree.links.new(normalize.outputs[0], composite.inputs[0])
+
+    for idx in range(views):
+        azimuth = (2 * math.pi * idx) / views
+        camera.location = (
+            radius * math.sin(azimuth) * math.cos(elevation),
+            -radius * math.cos(azimuth) * math.cos(elevation),
+            radius * math.sin(elevation),
+        )
+        look_at(camera, (0, 0, 0), mathutils)
+        scene.render.filepath = str(normal_dir / f"view_{idx:02d}.png")
+        bpy.ops.render.render(write_still=True)
+
+
+def main() -> None:
+    import bpy
+    import mathutils
+
+    args = parse_args()
+    rows = read_jsonl(args.manifest)
+    out_dir = Path(args.output_dir)
+
+    for row in rows:
+        uid = row["uid"]
+        path = row.get("local_path")
+        if not path:
+            print(f"Skipping {uid}: local_path missing")
+            continue
+        try:
+            clear_scene(bpy)
+            import_asset(bpy, path)
+            normalize_scene(bpy, mathutils)
+            render_views(bpy, mathutils, uid, out_dir, args.views, args.resolution)
+            print(f"Rendered {uid}")
+        except Exception as exc:
+            print(f"Failed {uid}: {exc}")
+
+
+if __name__ == "__main__":
+    main()
