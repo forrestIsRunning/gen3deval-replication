@@ -8,6 +8,7 @@ data/raw/
 data/renders/
 data/results/
 data/processed/*.jsonl
+data/processed/_vlm_tmp/
 !data/processed/.gitkeep
 paper/*.pdf
 paper/*.txt

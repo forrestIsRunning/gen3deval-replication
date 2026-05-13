@@ -21,21 +21,22 @@
 
       <section class="panel controls">
         <label>
-          VLM
-          <select id="model"></select>
-        </label>
-        <label>
           Manifest
           <select id="manifest"></select>
         </label>
         <label>
-          Limit
-          <input id="limit" type="number" min="1" max="200" value="10" />
+          资产
+          <select id="asset"></select>
         </label>
-        <button id="run">Run VLM</button>
+        <label>
+          VLM
+          <select id="model"></select>
+        </label>
+        <button id="run">Run Selected VLM</button>
         <button id="geometryRun">Geometry</button>
       </section>
       <div id="manifestHelp" class="manifest-help"></div>
+      <section id="contextBox" class="context-box"></section>
 
       <section class="metric-map">
         <div class="panel">
@@ -49,7 +50,7 @@
         </div>
         <div class="panel">
           <h2>arXiv 覆盖</h2>
-          <div id="literatureBars" class="bars"></div>
+          <div id="literatureIdeas" class="ideas"></div>
         </div>
       </section>
 
@@ -57,7 +58,7 @@
         <div class="panel viewer">
           <div class="section-head">
             <h2>3D 预览</h2>
-            <select id="asset"></select>
+            <span>GLB 原资产</span>
           </div>
           <model-viewer
             id="viewer"
@@ -69,16 +70,23 @@
         </div>
 
         <div class="panel">
-          <h2>多维平均分</h2>
-          <canvas id="chart"></canvas>
+          <h2>多视角渲染</h2>
+          <div id="viewGrid" class="view-grid"></div>
         </div>
       </section>
 
       <section class="grid">
         <div class="panel">
+          <h2 id="scoreTitle">多维平均分</h2>
+          <canvas id="chart"></canvas>
+        </div>
+        <div class="panel">
           <h2>几何分布</h2>
           <canvas id="geometryChart"></canvas>
         </div>
+      </section>
+
+      <section class="grid">
         <div class="panel">
           <h2>渲染验证</h2>
           <div id="renderSummary" class="summary"></div>

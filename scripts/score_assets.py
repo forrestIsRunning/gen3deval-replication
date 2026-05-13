@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -117,6 +118,7 @@ def main() -> None:
     parser.add_argument("--max-images", type=int, default=8)
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--timeout", type=int, default=180)
+    parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 
     load_dotenv(ROOT / ".env")
@@ -129,7 +131,7 @@ def main() -> None:
         rows = rows[: args.limit]
 
     output = Path(args.output)
-    if output.exists():
+    if args.overwrite and output.exists():
         output.unlink()
 
     for row in rows:
@@ -148,6 +150,7 @@ def main() -> None:
             "prompt": row.get("prompt"),
             "local_path": row.get("local_path"),
             "model": model,
+            "scored_at": time.time(),
             **result,
         }
         append_jsonl(output, out)
