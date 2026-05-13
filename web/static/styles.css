@@ -399,6 +399,34 @@ canvas {
   line-height: 1.5;
 }
 
+.quality-strip {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f9fafb;
+}
+
+.quality-strip.ok {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+}
+
+.quality-strip.warn {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.quality-strip b,
+.quality-strip span {
+  display: block;
+}
+
+.quality-strip span,
+.quality-strip p {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .view-group h3 {
   margin: 0 0 8px;
   font-size: 13px;

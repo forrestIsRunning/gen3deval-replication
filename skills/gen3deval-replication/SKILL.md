@@ -141,6 +141,13 @@ uv run python scripts/analyze_render_success.py \
   --render-dir data/renders
 ```
 
+Analyze render image quality:
+
+```bash
+uv run python scripts/analyze_render_quality.py \
+  --manifest data/processed/manifest_render10.jsonl
+```
+
 Score with VLM:
 
 ```bash
@@ -194,8 +201,10 @@ model/gltf-binary
 
 Read only when needed:
 
+- `docs/README.md` for the current document map and archived docs.
 - `docs/07_指标方法论.md` for metric trade-offs.
 - `docs/08_文献综述与指标决策.md` for arXiv survey conclusions.
 - `docs/11_manifest说明.md` for manifest meanings.
 - `docs/12_前端评测上下文与可视化说明.md` for UI context and chart semantics.
 - `docs/13_self_evolving_render_gate.md` for render gating and the no-render/no-VLM rule.
+- `docs/14_self_evolving_render_quality.md` for render image quality checks before VLM.

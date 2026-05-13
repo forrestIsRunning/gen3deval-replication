@@ -150,6 +150,13 @@ uv run python scripts/analyze_render_success.py \
   --render-dir data/renders
 ```
 
+分析渲染图质量：
+
+```bash
+uv run python scripts/analyze_render_quality.py \
+  --manifest data/processed/manifest_render10.jsonl
+```
+
 也可以在前端选择一个资产后点击 `Render Selected`，后端会调用同一份 Blender 渲染脚本，只渲染当前资产。
 
 ## VLM 单资产评分
@@ -209,6 +216,7 @@ content-type: model/gltf-binary
 
 ## 更多文档
 
+- `docs/README.md`：当前文档入口和阅读顺序。
 - `skills/gen3deval-replication/SKILL.md`：给 Codex/Agent 复用的项目操作 Skill。
 - `docs/07_指标方法论.md`
 - `docs/08_文献综述与指标决策.md`
@@ -217,3 +225,4 @@ content-type: model/gltf-binary
 - `docs/11_manifest说明.md`
 - `docs/12_前端评测上下文与可视化说明.md`
 - `docs/13_self_evolving_render_gate.md`
+- `docs/14_self_evolving_render_quality.md`

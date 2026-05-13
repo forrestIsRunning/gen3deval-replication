@@ -10,6 +10,7 @@ import uuid
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageStat
 from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -136,6 +137,67 @@ def render_view_counts(uid: str) -> dict:
     }
 
 
+def image_stats(path: Path) -> dict:
+    with Image.open(path) as image:
+        rgb = image.convert("RGB")
+        gray = rgb.convert("L")
+        stat = ImageStat.Stat(gray)
+        rgb_stat = ImageStat.Stat(rgb)
+        get_pixels = getattr(gray, "get_flattened_data", gray.getdata)
+        pixels = list(get_pixels())
+        total = max(1, len(pixels))
+        return {
+            "brightness": round(float(stat.mean[0]), 3),
+            "contrast": round(float(stat.stddev[0]), 3),
+            "nonwhite_ratio": round(sum(1 for value in pixels if value < 245) / total, 5),
+            "nonblack_ratio": round(sum(1 for value in pixels if value > 10) / total, 5),
+            "channel_std_mean": round(float(sum(rgb_stat.stddev) / 3), 3),
+        }
+
+
+def summarize_render_images(paths: list[Path]) -> dict:
+    if not paths:
+        return {
+            "count": 0,
+            "brightness": None,
+            "contrast": None,
+            "nonwhite_ratio": None,
+            "nonblack_ratio": None,
+            "channel_std_mean": None,
+            "blank_views": 0,
+        }
+    stats = [image_stats(path) for path in paths]
+    blank_views = sum(
+        1
+        for item in stats
+        if item["contrast"] < 3 or item["nonwhite_ratio"] < 0.01 or item["nonblack_ratio"] < 0.01
+    )
+    keys = ["brightness", "contrast", "nonwhite_ratio", "nonblack_ratio", "channel_std_mean"]
+    return {
+        "count": len(paths),
+        **{key: round(sum(item[key] for item in stats) / len(stats), 5) for key in keys},
+        "blank_views": blank_views,
+    }
+
+
+def render_quality(uid: str) -> dict:
+    base = DATA / "renders" / uid
+    rgb = summarize_render_images(sorted((base / "rgb").glob("*.png")))
+    normal = summarize_render_images(sorted((base / "normal").glob("*.png")))
+    issues = []
+    if rgb["count"] < 4:
+        issues.append(f"RGB views missing: {rgb['count']}/4")
+    if normal["count"] < 4:
+        issues.append(f"Normal views missing: {normal['count']}/4")
+    if rgb["blank_views"]:
+        issues.append(f"RGB blank/low-information views: {rgb['blank_views']}")
+    if normal["blank_views"]:
+        issues.append(f"Normal blank/low-information views: {normal['blank_views']}")
+    if normal["channel_std_mean"] is not None and normal["channel_std_mean"] < 5:
+        issues.append("Normal color variation is too low")
+    return {"rgb": rgb, "normal": normal, "quality_pass": not issues, "issues": issues}
+
+
 @app.get("/api/assets")
 def assets(manifest: str = "data/processed/manifest_render10.jsonl") -> dict:
     rows = manifest_rows(manifest)
@@ -149,6 +211,7 @@ def assets(manifest: str = "data/processed/manifest_render10.jsonl") -> dict:
         if not uid:
             continue
         render = render_view_counts(uid)
+        quality = render_quality(uid) if render["render_complete"] else None
         items.append(
             {
                 "uid": uid,
@@ -158,6 +221,7 @@ def assets(manifest: str = "data/processed/manifest_render10.jsonl") -> dict:
                 "has_model": bool(row.get("local_path") and Path(row["local_path"]).exists()),
                 "has_render": render["render_complete"],
                 "render": render,
+                "render_quality": quality,
                 "scored_models": sorted(m for m in scored_by_uid.get(uid, []) if m),
             }
         )
@@ -211,12 +275,15 @@ def evaluation(
         if not uid:
             continue
         counts = render_view_counts(uid)
+        quality = render_quality(uid) if counts["render_complete"] else None
         render_rows.append(
             {
                 "uid": uid,
                 "rgb_views": counts["rgb_views"],
                 "normal_views": counts["normal_views"],
                 "render_complete": counts["render_complete"],
+                "quality_pass": quality["quality_pass"] if quality else False,
+                "quality_issues": "; ".join(quality["issues"]) if quality else "render incomplete",
             }
         )
     render_complete = sum(1 for row in render_rows if str(row.get("render_complete")).lower() == "true")
@@ -263,9 +330,11 @@ def asset_evaluation(uid: str, model: str | None = None) -> dict:
 def views(uid: str) -> dict:
     base = DATA / "renders" / uid
     counts = render_view_counts(uid)
+    quality = render_quality(uid) if counts["render_complete"] else None
     return {
         "uid": uid,
         **counts,
+        "quality": quality,
         "rgb": [f"/data/renders/{uid}/rgb/{path.name}" for path in sorted((base / "rgb").glob("*.png"))],
         "normal": [f"/data/renders/{uid}/normal/{path.name}" for path in sorted((base / "normal").glob("*.png"))],
     }
@@ -484,6 +553,14 @@ def run(req: RunRequest) -> dict:
                     "Render it first."
                 ),
                 "render": counts,
+            }
+        quality = render_quality(req.uid)
+        if not quality["quality_pass"]:
+            return {
+                "ok": False,
+                "error": "Selected asset render quality check failed. Re-render or inspect the views before VLM evaluation.",
+                "render": counts,
+                "quality": quality,
             }
         run_manifest = DATA / "processed" / "_vlm_tmp" / "manifests" / f"_run_{req.uid}.jsonl"
         run_manifest.parent.mkdir(parents=True, exist_ok=True)

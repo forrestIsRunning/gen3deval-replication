@@ -134,7 +134,7 @@ function selectedAsset() {
 
 function selectedAssetRenderReady() {
   const asset = selectedAsset();
-  return Boolean(asset?.has_render);
+  return Boolean(asset?.has_render && asset?.render_quality?.quality_pass);
 }
 
 function contextText() {
@@ -156,7 +156,7 @@ function renderContext() {
   const render = asset?.render || {};
   const renderText = asset
     ? asset.has_render
-      ? `已渲染：RGB ${render.rgb_views || 0} / Normal ${render.normal_views || 0}，可以运行 VLM。`
+      ? `已渲染：RGB ${render.rgb_views || 0} / Normal ${render.normal_views || 0}；质量自检 ${asset.render_quality?.quality_pass ? "通过" : "需复查"}。`
       : `尚未渲染：RGB ${render.rgb_views || 0} / Normal ${render.normal_views || 0}。请先点击 Render Selected。`
     : "选择资产后检查渲染状态。";
   document.getElementById("contextBox").innerHTML = `
@@ -341,11 +341,19 @@ async function renderViews(uid) {
     return;
   }
   const data = await getJson(`/api/views/${encodeURIComponent(uid)}`);
+  const quality = data.quality;
   const blocks = [
     ["RGB", data.rgb || []],
     ["Normal", data.normal || []],
   ];
-  box.innerHTML = blocks
+  const qualityHtml = quality
+    ? `<div class="quality-strip ${quality.quality_pass ? "ok" : "warn"}">
+        <b>渲染质量自检：${quality.quality_pass ? "通过" : "需复查"}</b>
+        <span>RGB 对比度 ${formatNumber(quality.rgb.contrast)}，Normal 色彩变化 ${formatNumber(quality.normal.channel_std_mean)}</span>
+        ${quality.issues.length ? `<p>${quality.issues.join("；")}</p>` : ""}
+      </div>`
+    : "";
+  box.innerHTML = qualityHtml + blocks
     .map(([label, images]) => {
       if (!images.length) {
         return `
@@ -377,7 +385,7 @@ function updateActionState(viewData = null) {
   render.classList.add("secondary");
   render.disabled = !asset;
   run.disabled = !asset || !ready;
-  run.title = ready ? "基于当前资产 RGB/Normal 渲染图运行 VLM 评测。" : "当前资产尚未完成 RGB/Normal 渲染，不能运行 VLM。";
+  run.title = ready ? "基于当前资产 RGB/Normal 渲染图运行 VLM 评测。" : "当前资产尚未完成渲染或质量自检未通过，不能运行 VLM。";
   render.title = asset ? "为当前资产生成真实 RGB/Normal 多视角渲染。" : "请先选择资产。";
 }
 
@@ -439,6 +447,7 @@ function renderRenderSuccess(render) {
       <td>${row.rgb_views}</td>
       <td>${row.normal_views}</td>
       <td>${row.render_complete}</td>
+      <td title="${row.quality_issues || ""}">${row.quality_pass ? "通过" : "复查"}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -544,7 +553,7 @@ async function init() {
     };
     if (!req.uid) return;
     if (!selectedAssetRenderReady()) {
-      document.getElementById("log").textContent = "当前资产尚未完成 RGB/Normal 多视角渲染。请先点击 Render Selected。";
+      document.getElementById("log").textContent = "当前资产尚未完成 RGB/Normal 多视角渲染，或渲染质量自检未通过。请先点击 Render Selected 或检查视图。";
       return;
     }
     document.getElementById("log").textContent = "running real VLM evaluation for selected asset...";
