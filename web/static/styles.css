@@ -93,6 +93,34 @@ main {
   margin-bottom: 16px;
 }
 
+.manifest-help {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 8px;
+  align-items: center;
+  margin: -8px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.manifest-help b {
+  font-size: 13px;
+}
+
+.manifest-help span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manifest-help p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -277,6 +305,11 @@ td {
   padding: 8px;
   text-align: left;
   white-space: nowrap;
+}
+
+td[title],
+th[title] {
+  cursor: help;
 }
 
 th {

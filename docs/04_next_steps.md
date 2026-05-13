@@ -23,6 +23,7 @@ Recommended VLM judges from your available list:
 
 - `qwen3-vl-235b-a22b-thinking`: best default for careful visual judging;
 - `qwen3-vl-235b-a22b-instruct`: faster non-thinking variant;
-- `qwen2.5-vl-7b-instruct`: cheap smoke tests.
+
+`qwen2.5-vl-7b-instruct` has been removed from the UI because it is no longer available in the current service.
 
 For coding and maintenance, use `gpt-5.5`, `gpt-5.4`, or `gpt-5.3-codex`.

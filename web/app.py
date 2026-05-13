@@ -2,6 +2,9 @@ from pathlib import Path
 import json
 import subprocess
 import sys
+import threading
+import time
+import uuid
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -10,6 +13,7 @@ from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
+JOBS: dict[str, dict] = {}
 
 app = FastAPI(title="Gen3DEval Replication POC")
 app.mount("/static", StaticFiles(directory=ROOT / "web" / "static"), name="static")
@@ -17,12 +21,8 @@ app.mount("/data", StaticFiles(directory=DATA), name="data")
 
 
 MODELS = [
-    "qwen3-vl-235b-a22b-thinking",
     "qwen3-vl-235b-a22b-instruct",
-    "qwen2.5-vl-7b-instruct",
-    "kimi-k2.6",
-    "glm-5.1",
-    "claude-sonnet-4-6",
+    "qwen3-vl-235b-a22b-thinking",
 ]
 
 
@@ -50,7 +50,59 @@ def models() -> dict:
 @app.get("/api/manifests")
 def manifests() -> dict:
     files = sorted((DATA / "processed").glob("*.jsonl"))
-    return {"manifests": [str(path.relative_to(ROOT)) for path in files]}
+    items = []
+    descriptions = {
+        "manifest_120.jsonl": {
+            "role": "主数据集",
+            "use": "120 个真实 Objaverse-LVIS 资产。用于全量几何指标、全量渲染和正式评测。",
+            "recommended": True,
+        },
+        "manifest_render10.jsonl": {
+            "role": "已渲染小批量",
+            "use": "10 个真实资产，已经生成 RGB/Normal。当前最适合直接跑 Run VLM。",
+            "recommended": True,
+        },
+        "manifest_smoke3.jsonl": {
+            "role": "渲染冒烟测试",
+            "use": "3 个真实资产，仅用于验证 Blender 渲染脚本。",
+            "recommended": False,
+        },
+        "pairs_smoke3.jsonl": {
+            "role": "成对评测冒烟测试",
+            "use": "pairwise/ELO 测试输入，不适合 Run VLM 单资产评分。",
+            "recommended": False,
+        },
+        "sample_manifest.jsonl": {
+            "role": "旧 demo",
+            "use": "没有真实 local_path，不用于正式评测。",
+            "recommended": False,
+        },
+    }
+    for path in files:
+        rel = str(path.relative_to(ROOT))
+        meta = descriptions.get(path.name, {"role": "其他", "use": "未分类 manifest。", "recommended": False})
+        rows = sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+        items.append({"path": rel, "name": path.name, "rows": rows, **meta})
+    return {"manifests": items}
+
+
+def run_job(job_id: str, cmd: list[str]) -> None:
+    JOBS[job_id].update({"status": "running", "started_at": time.time()})
+    proc = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, check=False)
+    JOBS[job_id].update(
+        {
+            "status": "complete" if proc.returncode == 0 else "failed",
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+            "returncode": proc.returncode,
+            "finished_at": time.time(),
+        }
+    )
+
+
+@app.get("/api/jobs/{job_id}")
+def job_status(job_id: str) -> dict:
+    return JOBS.get(job_id, {"status": "missing", "error": f"job not found: {job_id}"})
 
 
 @app.get("/api/scores")
@@ -211,9 +263,19 @@ def run(req: RunRequest) -> dict:
         "--timeout",
         "240",
     ]
-    proc = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, check=False)
-    ok = proc.returncode == 0
-    return {"ok": ok, "stdout": proc.stdout, "stderr": proc.stderr, "returncode": proc.returncode}
+    job_id = uuid.uuid4().hex
+    JOBS[job_id] = {
+        "id": job_id,
+        "kind": "vlm",
+        "status": "queued",
+        "stdout": "",
+        "stderr": "",
+        "returncode": None,
+        "created_at": time.time(),
+    }
+    thread = threading.Thread(target=run_job, args=(job_id, cmd), daemon=True)
+    thread.start()
+    return {"ok": True, "job_id": job_id, "status": "queued"}
 
 
 @app.post("/api/geometry/run")

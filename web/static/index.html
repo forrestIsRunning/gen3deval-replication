@@ -35,6 +35,7 @@
         <button id="run">Run VLM</button>
         <button id="geometryRun">Geometry</button>
       </section>
+      <div id="manifestHelp" class="manifest-help"></div>
 
       <section class="metric-map">
         <div class="panel">
@@ -103,15 +104,15 @@
           <table>
             <thead>
               <tr>
-                <th title="Objaverse 资产唯一 ID。">uid</th>
-                <th title="LVIS 类别，用作 prompt 和分组分析。">category</th>
-                <th title="mesh 三角面数量。由 trimesh 读取模型后统计 faces，衡量复杂度和渲染成本。">faces</th>
-                <th title="mesh 顶点数量。由 trimesh 统计 vertices，衡量模型复杂度。">vertices</th>
-                <th title="mesh 是否封闭。trimesh.is_watertight，打印/仿真/CAD 场景更重要。">watertight</th>
-                <th title="面朝向是否一致。trimesh.is_winding_consistent，影响法线、阴影和导出质量。">winding</th>
-                <th title="包围盒最长边 / 最短边。用于发现极端扁平或尺度异常模型。">aspect</th>
-                <th title="面积接近 0 的退化面数量。用于发现坏 mesh 和导出问题。">degenerate</th>
-                <th title="mesh 表面积。由 trimesh.area 计算，可辅助发现尺度异常。">area</th>
+                <th>资产 ID</th>
+                <th>类别</th>
+                <th>面数</th>
+                <th>顶点数</th>
+                <th>封闭</th>
+                <th>朝向一致</th>
+                <th>长宽比</th>
+                <th>退化面</th>
+                <th>表面积</th>
               </tr>
             </thead>
             <tbody id="geometryRows"></tbody>
