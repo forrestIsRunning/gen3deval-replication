@@ -76,13 +76,27 @@
       </section>
 
       <section class="grid">
-        <div class="panel">
-          <h2 id="scoreTitle">多维平均分</h2>
-          <canvas id="chart"></canvas>
+        <div class="panel chart-panel">
+          <div class="panel-head">
+            <div>
+              <h2 id="scoreTitle">VLM 多维评分</h2>
+              <p id="scoreSubtitle">按当前 manifest 和模型统计，0-10 分。</p>
+            </div>
+          </div>
+          <div class="chart-wrap score-chart-wrap">
+            <canvas id="chart"></canvas>
+          </div>
         </div>
-        <div class="panel">
-          <h2>几何分布</h2>
-          <canvas id="geometryChart"></canvas>
+        <div class="panel chart-panel">
+          <div class="panel-head">
+            <div>
+              <h2>几何分布</h2>
+              <p id="geometrySubtitle">按面数区间聚合当前 manifest，橙色表示当前资产所在区间。</p>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="geometryChart"></canvas>
+          </div>
         </div>
       </section>
 

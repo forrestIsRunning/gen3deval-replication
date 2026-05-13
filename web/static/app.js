@@ -35,6 +35,16 @@ const scoreOrder = [
   "overall",
 ];
 
+const metricLabels = {
+  text_fidelity: "文本",
+  appearance: "外观",
+  surface_quality: "表面",
+  geometry_coherence: "几何",
+  texture_material: "材质",
+  multi_view_consistency: "多视角",
+  overall: "综合",
+};
+
 function help(label, key) {
   return `<span class="metric-help" title="${metricHelp[key] || ""}">${label}<i>?</i></span>`;
 }
@@ -161,22 +171,50 @@ function scoreAverages(scores) {
 
 function renderScoreChart(scores) {
   const data = scoreAverages(scores);
-  document.getElementById("scoreTitle").textContent = `多维平均分 · ${contextText().model}`;
+  const ctxText = contextText();
+  document.getElementById("scoreTitle").textContent = "VLM 多维评分";
+  document.getElementById("scoreSubtitle").textContent = `${ctxText.model} · ${data.length ? `${scores.length} 个已评分资产` : "当前选择暂无评分"}`;
   const ctx = document.getElementById("chart");
   if (scoreChart) scoreChart.destroy();
   scoreChart = new Chart(ctx, {
     type: "bar",
     data: {
-      labels: data.map((d) => d.dimension),
-      datasets: [{ data: data.map((d) => d.score), backgroundColor: "#2563eb" }],
+      labels: data.map((d) => metricLabels[d.dimension] || d.dimension),
+      datasets: [
+        {
+          data: data.map((d) => d.score),
+          backgroundColor: data.map((d) => (d.dimension === "overall" ? "#b45309" : "#2563eb")),
+          borderRadius: 5,
+          barThickness: 18,
+        },
+      ],
     },
     options: {
+      indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
-      scales: { y: { min: 0, max: 10 } },
+      layout: { padding: { top: 4, right: 18, bottom: 4, left: 4 } },
+      scales: {
+        x: {
+          min: 0,
+          max: 10,
+          grid: { color: "#edf0f5" },
+          ticks: { stepSize: 2 },
+        },
+        y: {
+          grid: { display: false },
+          ticks: { autoSkip: false, padding: 8 },
+        },
+      },
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { afterLabel: (ctx) => metricHelp[data[ctx.dataIndex].dimension] || "" } },
+        tooltip: {
+          callbacks: {
+            title: (items) => data[items[0].dataIndex].dimension,
+            label: (ctx) => `平均分: ${ctx.parsed.x}`,
+            afterLabel: (ctx) => metricHelp[data[ctx.dataIndex].dimension] || "",
+          },
+        },
       },
     },
   });
@@ -184,29 +222,66 @@ function renderScoreChart(scores) {
 
 function renderGeometryChart(rows) {
   const selectedUid = document.getElementById("asset").value;
-  const top = rows
+  const values = rows
     .filter((row) => row.ok && row.geometry)
-    .slice(0, 40)
-    .map((row) => ({ uid: row.uid, faces: row.geometry.face_count || 0 }));
+    .map((row) => ({ uid: row.uid, faces: Number(row.geometry.face_count || 0) }))
+    .filter((row) => row.faces > 0);
+  const bins = [
+    { label: "<5k", min: 0, max: 5000 },
+    { label: "5k-20k", min: 5000, max: 20000 },
+    { label: "20k-50k", min: 20000, max: 50000 },
+    { label: "50k-100k", min: 50000, max: 100000 },
+    { label: ">100k", min: 100000, max: Infinity },
+  ].map((bin) => ({
+    ...bin,
+    count: values.filter((row) => row.faces >= bin.min && row.faces < bin.max).length,
+    selected: values.some((row) => row.uid === selectedUid && row.faces >= bin.min && row.faces < bin.max),
+  }));
+  const selected = values.find((row) => row.uid === selectedUid);
+  document.getElementById("geometrySubtitle").textContent = selected
+    ? `当前资产 ${formatNumber(selected.faces)} faces；图中按面数区间聚合 ${values.length} 个资产。`
+    : `按面数区间聚合 ${values.length} 个资产。`;
   const ctx = document.getElementById("geometryChart");
   if (geometryChart) geometryChart.destroy();
   geometryChart = new Chart(ctx, {
     type: "bar",
     data: {
-      labels: top.map((d) => d.uid.slice(0, 6)),
+      labels: bins.map((d) => d.label),
       datasets: [
         {
-          data: top.map((d) => d.faces),
-          backgroundColor: top.map((d) => (d.uid === selectedUid ? "#b45309" : "#0f766e")),
+          data: bins.map((d) => d.count),
+          backgroundColor: bins.map((d) => (d.selected ? "#b45309" : "#0f766e")),
+          borderRadius: 5,
+          barThickness: 28,
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: 8, right: 12, bottom: 0, left: 4 } },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { padding: 8 },
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: "#edf0f5" },
+          ticks: { precision: 0 },
+        },
+      },
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { afterLabel: () => metricHelp.face_count } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `资产数: ${ctx.parsed.y}`,
+            afterLabel: (ctx) => {
+              const bin = bins[ctx.dataIndex];
+              return bin.selected ? `当前资产在该区间。${metricHelp.face_count}` : metricHelp.face_count;
+            },
+          },
+        },
       },
     },
   });

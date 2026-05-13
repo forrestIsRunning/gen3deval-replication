@@ -314,6 +314,19 @@ button {
   margin-bottom: 12px;
 }
 
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.panel-head p {
+  max-width: 540px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .section-head select {
   max-width: 70%;
 }
@@ -327,7 +340,20 @@ model-viewer {
 
 canvas {
   width: 100%;
-  height: 360px;
+  height: 100%;
+}
+
+.chart-panel {
+  min-height: 380px;
+}
+
+.chart-wrap {
+  height: 290px;
+  padding: 4px 0 0;
+}
+
+.score-chart-wrap {
+  height: 320px;
 }
 
 .view-grid {
