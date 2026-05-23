@@ -21,8 +21,8 @@ text-to-3D method outputs:
 
 Recommended VLM judges from your available list:
 
-- `qwen3-vl-235b-a22b-thinking`: best default for careful visual judging;
-- `qwen3-vl-235b-a22b-instruct`: faster non-thinking variant;
+- `qwen3-vl-plus`: primary default for visual judging;
+- `qwen3-vl-flash`: faster lightweight variant;
 
 `qwen2.5-vl-7b-instruct` has been removed from the UI because it is no longer available in the current service.
 

@@ -76,7 +76,7 @@ docker compose --env-file .env.opik -f docker-compose.opik.yml up -d
 ```bash
 uv run python scripts/score_assets.py \
   --manifest data/processed/manifest_render10.jsonl \
-  --model qwen3-vl-235b-a22b-thinking \
+  --model qwen3-vl-plus \
   --limit 1
 ```
 

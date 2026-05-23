@@ -31,7 +31,7 @@
   "winner": "A",
   "confidence": 0.74,
   "reason": "Object A has cleaner shape and more coherent textures.",
-  "model": "qwen3-vl-235b-a22b-thinking"
+  "model": "qwen3-vl-plus"
 }
 ```
 

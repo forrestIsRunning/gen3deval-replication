@@ -26,8 +26,8 @@ The project is a public-data Gen3DEval-style 3D evaluation pipeline:
 - Do not commit `.env`, `data/results/`, `data/renders/`, downloaded PDFs, or Objaverse assets.
 - Do not use mock data for scoring. VLM scores must come from real rendered images and real LiteLLM calls.
 - Keep the current VLM model list to:
-  - `qwen3-vl-235b-a22b-instruct`
-  - `qwen3-vl-235b-a22b-thinking`
+  - `qwen3-vl-plus`
+  - `qwen3-vl-flash`
 - Treat the frontend as a view over `manifest + uid + model`; charts must not silently mix unrelated models or datasets.
 - Geometry metrics are computed directly; VLM is for semantic/visual fidelity; LLM is only for summarizing existing evidence.
 - Gate order is asset exists -> geometry computable -> RGB/Normal renders complete -> VLM score -> LLM summary.
@@ -46,7 +46,7 @@ Required `.env` keys:
 ```bash
 LITELLM_BASE_URL=http://120.48.38.233:4000
 LITELLM_API_KEY=your-key
-GEN3D_VLM_MODEL=qwen3-vl-235b-a22b-thinking
+GEN3D_VLM_MODEL=qwen3-vl-plus
 OPIK_BASE_URL=http://localhost:5173/api
 OPIK_PROJECT_NAME=gen3deval-replication
 OPIK_WORKSPACE=default
@@ -157,7 +157,7 @@ Score with VLM:
 ```bash
 uv run python scripts/score_assets.py \
   --manifest data/processed/manifest_render10.jsonl \
-  --model qwen3-vl-235b-a22b-thinking
+  --model qwen3-vl-plus
 ```
 
 Use `--limit N` only for command-line batch debugging. The frontend should run selected assets by `uid`.
@@ -192,7 +192,7 @@ API checks:
 ```bash
 curl -s http://127.0.0.1:7860/api/models
 curl -s 'http://127.0.0.1:7860/api/assets?manifest=data/processed/manifest_render10.jsonl'
-curl -s 'http://127.0.0.1:7860/api/evaluation?manifest=data/processed/manifest_render10.jsonl&model=qwen3-vl-235b-a22b-thinking'
+curl -s 'http://127.0.0.1:7860/api/evaluation?manifest=data/processed/manifest_render10.jsonl&model=qwen3-vl-plus'
 curl -s 'http://127.0.0.1:7860/api/views/fac949a2ce8f4a58aa5b61aa5ec8ed11'
 ```
 

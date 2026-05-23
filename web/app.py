@@ -24,8 +24,8 @@ app.mount("/data", StaticFiles(directory=DATA), name="data")
 
 
 MODELS = [
-    "qwen3-vl-235b-a22b-instruct",
-    "qwen3-vl-235b-a22b-thinking",
+    "qwen3-vl-plus",
+    "qwen3-vl-flash",
 ]
 
 

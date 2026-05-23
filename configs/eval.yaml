@@ -13,7 +13,7 @@ judge:
   base_url_env: LITELLM_BASE_URL
   api_key_env: LITELLM_API_KEY
   model_env: GEN3D_VLM_MODEL
-  default_model: qwen3-vl-235b-a22b-thinking
+  default_model: qwen3-vl-plus
   temperature: 0
   max_tokens: 1200
 

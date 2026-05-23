@@ -1,6 +1,6 @@
 # Gen3DEval Replication
 
-3D 生成评测平台。
+3D 生成评测平台。输入真实 3D 资产、多视角渲染图和 prompt，输出几何指标、视觉评测分数与 pairwise 偏好结果。
 
 ## 启动
 
@@ -9,6 +9,11 @@ uv sync
 cp .env.example .env
 uv run uvicorn web.app:app --host 127.0.0.1 --port 7860 --reload
 ```
+
+默认视觉评测模型：
+
+- `qwen3-vl-plus`
+- `qwen3-vl-flash`
 
 ## 本地 Opik
 
@@ -30,6 +35,15 @@ docker compose --env-file .env.opik -f docker-compose.opik.yml up -d
 ```bash
 uv run python scripts/score_assets.py --manifest data/processed/manifest_render10.jsonl --limit 1
 uv run python scripts/evaluate_pairwise.py --pairs data/processed/pairs_smoke3.jsonl --limit 1
+```
+
+指定模型：
+
+```bash
+uv run python scripts/score_assets.py \
+  --manifest data/processed/manifest_render10.jsonl \
+  --model qwen3-vl-plus \
+  --limit 1
 ```
 
 ## 前端

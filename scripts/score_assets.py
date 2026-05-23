@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from PIL import Image
 
 from common import ROOT, append_jsonl, read_jsonl
-from observability import trace_vlm_call, push_to_annotation_queue, log_feedback_scores
+from observability import trace_model_eval_call, push_to_annotation_queue, log_feedback_scores
 from vlm_agent import image_content, run_structured
 from vlm_types import AssetScoreResult, ManifestRow
 
@@ -114,7 +114,7 @@ def prepare_image(path: Path, image_size: int, tmp_dir: Path) -> Path:
     return out
 
 
-def call_vlm(
+def score_with_vision_model(
     row: ManifestRow,
     images: list[Path],
     model: str,
@@ -154,7 +154,7 @@ def call_vlm(
         "prompt_variant": prompt_variant,
     }
 
-    def request_vlm() -> AssetScoreResult:
+    def request_vision_model_score() -> AssetScoreResult:
         return run_structured(
             model_name=model,
             base_url=base_url,
@@ -180,10 +180,10 @@ def call_vlm(
             "strength_count": len(result.get("strengths", [])),
         }
 
-    result = trace_vlm_call(
+    result = trace_model_eval_call(
         name=f"gen3d.vlm.score_asset.{prompt_variant}",
         safe_input=safe_input,
-        operation=request_vlm,
+        operation=request_vision_model_score,
         output_summary=summarize,
         after_trace=_handle_low_score_trace,
         metadata=metadata,
@@ -241,7 +241,7 @@ def run_single(
 
         for variant in variants:
             try:
-                result = call_vlm(
+                result = score_with_vision_model(
                     row, images, model, base_url, api_key, image_size, timeout,
                     prompt_variant=variant, idx=trial,
                 )
@@ -297,7 +297,7 @@ def run_experiment(
             if len(images) < 4:
                 return {"uid": uid, "error": "no images"}
             row = item
-            result = call_vlm(
+            result = score_with_vision_model(
                 row, images, model, base_url, api_key, image_size, timeout,
                 prompt_variant=variant, idx=0,
             )
@@ -344,7 +344,7 @@ def main() -> None:
     args = parser.parse_args()
 
     load_dotenv(ROOT / ".env")
-    model = args.model or os.environ.get("GEN3D_VLM_MODEL", "qwen3-vl-235b-a22b-thinking")
+    model = args.model or os.environ.get("GEN3D_VLM_MODEL", "qwen3-vl-plus")
     base_url = os.environ.get("LITELLM_BASE_URL", "http://120.48.38.233:4000")
     api_key = os.environ.get("LITELLM_API_KEY", "")
     if not api_key:

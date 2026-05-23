@@ -7,7 +7,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from common import ROOT, append_jsonl, read_jsonl
-from observability import trace_vlm_call
+from observability import trace_model_eval_call
 from vlm_agent import image_content, run_structured
 from vlm_types import PairRow, PairwiseJudgeResult
 
@@ -20,7 +20,7 @@ def images_for(uid: str, dimension: str, render_dir: Path) -> list[Path]:
     return sorted((render_dir / uid / subdir).glob("*.png"))[:4]
 
 
-def judge(
+def run_multimodal_judge(
     pair: PairRow, dimension: str, model: str, base_url: str, api_key: str, render_dir: Path,
 ) -> PairwiseJudgeResult:
     a = pair["object_a"]
@@ -67,7 +67,7 @@ def judge(
         "timeout": 180,
     }
 
-    def request_vlm() -> PairwiseJudgeResult:
+    def request_multimodal_judge() -> PairwiseJudgeResult:
         return run_structured(
             model_name=model,
             base_url=base_url,
@@ -91,10 +91,10 @@ def judge(
             "reason_chars": len(str(result.get("reason", ""))),
         }
 
-    parsed = trace_vlm_call(
+    parsed = trace_model_eval_call(
         name="gen3d.vlm.pairwise_judge",
         safe_input=safe_input,
-        operation=request_vlm,
+        operation=request_multimodal_judge,
         output_summary=summarize,
         metadata=metadata,
         model=model,
@@ -115,7 +115,7 @@ def main() -> None:
     args = parser.parse_args()
 
     load_dotenv(ROOT / ".env")
-    model = args.model or os.environ.get("GEN3D_VLM_MODEL", "qwen3-vl-235b-a22b-thinking")
+    model = args.model or os.environ.get("GEN3D_VLM_MODEL", "qwen3-vl-plus")
     base_url = os.environ.get("LITELLM_BASE_URL", "http://120.48.38.233:4000")
     api_key = os.environ.get("LITELLM_API_KEY", "")
     if not api_key:
@@ -131,7 +131,9 @@ def main() -> None:
 
     for pair in pairs:
         for dimension in DIMENSIONS:
-            result = judge(pair, dimension, model, base_url, api_key, Path(args.render_dir))
+            result = run_multimodal_judge(
+                pair, dimension, model, base_url, api_key, Path(args.render_dir),
+            )
             row = {
                 "pair_id": pair["pair_id"],
                 "dimension": dimension,

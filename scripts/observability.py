@@ -86,7 +86,7 @@ def _status_err(exc: BaseException, **extra: Any) -> dict[str, Any]:
     return {"ok": False, "error": safe_error(exc), **extra}
 
 
-def trace_vlm_call(
+def trace_model_eval_call(
     name: str,
     safe_input: dict[str, Any],
     operation: Callable[[], T],
@@ -238,6 +238,10 @@ def trace_vlm_call(
 
     publish()
     return result
+
+
+# Backward-compatible alias for older call sites.
+trace_vlm_call = trace_model_eval_call
 
 
 def push_to_annotation_queue(
