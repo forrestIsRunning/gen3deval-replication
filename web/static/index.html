@@ -11,14 +11,12 @@
   <body>
     <header>
       <div>
-        <h1>Tripo3D 评测工作台</h1>
-        <p>几何门禁、渲染验证、VLM 语义质量、论文方法论在同一页面审计。</p>
+        <h1>Gen3DEval 工作台</h1>
+        <p>最小可运行的 3D 几何、渲染与 VLM 评分界面。</p>
       </div>
     </header>
 
     <main>
-      <section class="kpis" id="kpis"></section>
-
       <section class="panel controls">
         <label>
           Manifest
@@ -38,22 +36,6 @@
       </section>
       <div id="manifestHelp" class="manifest-help"></div>
       <section id="contextBox" class="context-box"></section>
-
-      <section class="metric-map">
-        <div class="panel">
-          <h2>指标分层</h2>
-          <div class="pill-grid">
-            <div title="直接从 3D 文件解析 mesh，计算顶点、面、包围盒、拓扑等，不依赖 VLM。"><b>Level 0</b><span>几何客观指标：加载、面数、bbox、退化面、watertight</span></div>
-            <div title="用 Blender 统一相机和光照渲染 RGB/Normal，多视角图片是后续 VLM 判断的证据。"><b>Level 1</b><span>渲染代理指标：RGB/Normal 成功率，多视角证据</span></div>
-            <div title="VLM 读取真实渲染图，按 rubric 输出外观、表面、还原度、一致性等评分。"><b>Level 2</b><span>VLM 指标：外观、表面、文本/图片还原、多视角一致</span></div>
-            <div title="LLM 只汇总已有指标和 VLM reason，生成报告，不直接凭空给 3D 打分。"><b>Level 3</b><span>LLM 报告：失败归因、版本比较、研发建议</span></div>
-          </div>
-        </div>
-        <div class="panel">
-          <h2>arXiv 覆盖</h2>
-          <div id="literatureIdeas" class="ideas"></div>
-        </div>
-      </section>
 
       <section class="grid">
         <div class="panel viewer">

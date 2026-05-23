@@ -1,7 +1,7 @@
 [project]
 name = "gen3deval-replication"
 version = "0.1.0"
-description = "Public-data Gen3DEval-style 3D evaluation pipeline and dashboard"
+description = "Minimal Gen3DEval-style 3D evaluation pipeline"
 requires-python = ">=3.11,<3.13"
 dependencies = [
   "fastapi>=0.115.0",

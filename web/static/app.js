@@ -6,7 +6,6 @@ let evaluation = null;
 
 const metricHelp = {
   text_fidelity: "文本还原度。VLM 查看多视角 RGB/Normal，并比较 prompt 与 3D 资产是否一致。",
-  image_fidelity: "图片还原度。用于 image-to-3D，比较输入图与生成资产的形状、颜色、部件一致性。",
   appearance: "外观质量。VLM 判断整体完整度、可读性、美观度和明显视觉缺陷。",
   surface_quality: "表面质量。VLM 查看 normal 图和 RGB 图，判断噪声、破面、过度平滑、浮片等问题。",
   geometry_coherence: "几何一致性。VLM 判断结构比例、部件连接、是否有穿模或漂浮组件。",
@@ -22,7 +21,6 @@ const metricHelp = {
   is_watertight: "封闭。trimesh.is_watertight；表示 mesh 是否没有洞。打印、仿真、CAD 更看重。",
   is_winding_consistent: "朝向一致。trimesh.is_winding_consistent；表示面朝向是否一致，影响法线、阴影和导出质量。",
   degenerate_face_count: "退化面。面积接近 0 的面数量；用于发现坏 mesh、导出隐患和渲染异常。",
-  render_success_rate: "渲染成功率。Blender 是否能为当前 manifest 的资产生成完整 4-view RGB 和 normal 图。",
 };
 
 const scoreOrder = [
@@ -96,19 +94,6 @@ function updateManifestHelp() {
     return;
   }
   box.innerHTML = `<b>${item.name}</b><span>${item.role}</span><p>${item.use}</p>`;
-}
-
-function renderKpis(dashboard) {
-  const kpis = document.getElementById("kpis");
-  const cards = [
-    ["几何资产", `${dashboard.geometry.ok}/${dashboard.geometry.assets}`, "真实 Objaverse-LVIS 资产的可计算几何指标。"],
-    ["渲染成功", `${dashboard.render.complete}/${dashboard.render.assets}`, metricHelp.render_success_rate],
-    ["VLM 样本", `${dashboard.scores.assets}`, "已有真实渲染图上的真实 VLM 评分样本数，按 uid + model 保存。"],
-    ["论文覆盖", `${dashboard.literature.download_ok}/${dashboard.literature.papers}`, "4 个方向各 10 篇 arXiv/相关论文 PDF 下载覆盖。"],
-  ];
-  kpis.innerHTML = cards
-    .map(([label, value, tip]) => `<div class="kpi" title="${tip}"><span>${label}</span><b>${value}</b></div>`)
-    .join("");
 }
 
 function renderAssetSelect() {
@@ -432,13 +417,7 @@ function formatNumber(value) {
 function renderRenderSuccess(render) {
   const summary = document.getElementById("renderSummary");
   const rows = render.rows || [];
-  summary.innerHTML = `
-    <div class="summary-item" title="${metricHelp.render_success_rate}">
-      <span>${help("渲染成功率", "render_success_rate")}</span>
-      <b>${Math.round((render.success_rate || 0) * 100)}%</b>
-    </div>
-    <div class="summary-item"><span>当前 manifest</span><b>${render.complete || 0}/${render.assets || 0}</b></div>
-  `;
+  summary.innerHTML = `<div class="summary-item"><span>当前 manifest</span><b>${render.complete || 0}/${render.assets || 0}</b></div>`;
   const tbody = document.getElementById("renderRows");
   const selectedUid = document.getElementById("asset").value;
   tbody.innerHTML = "";
@@ -450,25 +429,10 @@ function renderRenderSuccess(render) {
       <td>${row.rgb_views}</td>
       <td>${row.normal_views}</td>
       <td>${row.render_complete}</td>
-      <td title="${row.quality_issues || ""}">${row.quality_pass ? "通过" : "复查"}</td>
+      <td>${row.quality_pass ? "通过" : "复查"}</td>
     `;
     tbody.appendChild(tr);
   });
-}
-
-function renderLiterature(data) {
-  const box = document.getElementById("literatureIdeas");
-  box.innerHTML = (data.ideas || [])
-    .map(
-      (row) => `
-        <article class="idea">
-          <div><b>${row.paper}</b><span>${row.direction}</span></div>
-          <p><strong>借鉴：</strong>${row.idea}</p>
-          <p><strong>当前实现：</strong>${row.implemented}</p>
-        </article>
-      `,
-    )
-    .join("");
 }
 
 async function loadAssets() {
@@ -501,16 +465,12 @@ async function refreshContext() {
 }
 
 async function init() {
-  const [models, manifests, dashboard, literature] = await Promise.all([
+  const [models, manifests] = await Promise.all([
     getJson("/api/models"),
     getJson("/api/manifests"),
-    getJson("/api/dashboard"),
-    getJson("/api/literature-ideas"),
   ]);
   fillSelect("model", models.models);
   fillManifestSelect(manifests.manifests);
-  renderKpis(dashboard);
-  renderLiterature(literature);
 
   document.getElementById("manifest").addEventListener("change", async () => {
     updateManifestHelp();
