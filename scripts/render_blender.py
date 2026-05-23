@@ -81,6 +81,31 @@ def normalize_scene(bpy, mathutils) -> None:
         obj.data.update()
 
 
+def scene_bbox_corners(bpy, mathutils):
+    meshes = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
+    if not meshes:
+        raise ValueError("No mesh objects found after normalization")
+
+    min_corner = mathutils.Vector((float("inf"), float("inf"), float("inf")))
+    max_corner = mathutils.Vector((float("-inf"), float("-inf"), float("-inf")))
+    for obj in meshes:
+        for vertex in obj.data.vertices:
+            co = obj.matrix_world @ vertex.co
+            min_corner.x = min(min_corner.x, co.x)
+            min_corner.y = min(min_corner.y, co.y)
+            min_corner.z = min(min_corner.z, co.z)
+            max_corner.x = max(max_corner.x, co.x)
+            max_corner.y = max(max_corner.y, co.y)
+            max_corner.z = max(max_corner.z, co.z)
+
+    return [
+        mathutils.Vector((x, y, z))
+        for x in (min_corner.x, max_corner.x)
+        for y in (min_corner.y, max_corner.y)
+        for z in (min_corner.z, max_corner.z)
+    ]
+
+
 def setup_camera_light(bpy, mathutils):
     light_data = bpy.data.lights.new("KeyLight", type="AREA")
     light_data.energy = 500
@@ -102,6 +127,21 @@ def look_at(obj, target, mathutils) -> None:
     obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
 
 
+def fit_camera_to_bbox(bpy, camera, bbox_corners, mathutils, margin: float = 1.12) -> None:
+    scene = bpy.context.scene
+    fitted_location, _ = camera.camera_fit_coords(scene, bbox_corners)
+    target = mathutils.Vector((0, 0, 0))
+    fitted_location = mathutils.Vector(fitted_location)
+
+    # Keep the viewing direction from camera_fit_coords, then push back slightly
+    # to preserve a stable margin for thin or diagonal assets.
+    direction = fitted_location - target
+    if direction.length == 0:
+        direction = mathutils.Vector((0, -1, 0))
+    camera.location = target + direction * margin
+    look_at(camera, target, mathutils)
+
+
 def render_views(bpy, mathutils, uid: str, out_dir: Path, views: int, resolution: int) -> None:
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_WORKBENCH"
@@ -120,6 +160,7 @@ def render_views(bpy, mathutils, uid: str, out_dir: Path, views: int, resolution
     camera = setup_camera_light(bpy, mathutils)
     radius = 3.2
     elevation = math.radians(18)
+    bbox_corners = scene_bbox_corners(bpy, mathutils)
 
     rgb_dir = out_dir / uid / "rgb"
     normal_dir = out_dir / uid / "normal"
@@ -134,6 +175,7 @@ def render_views(bpy, mathutils, uid: str, out_dir: Path, views: int, resolution
             radius * math.sin(elevation),
         )
         look_at(camera, (0, 0, 0), mathutils)
+        fit_camera_to_bbox(bpy, camera, bbox_corners, mathutils)
         scene.render.filepath = str(rgb_dir / f"view_{idx:02d}.png")
         scene.view_layers[0].use_pass_normal = False
         bpy.ops.render.render(write_still=True)
@@ -169,6 +211,7 @@ def render_views(bpy, mathutils, uid: str, out_dir: Path, views: int, resolution
             radius * math.sin(elevation),
         )
         look_at(camera, (0, 0, 0), mathutils)
+        fit_camera_to_bbox(bpy, camera, bbox_corners, mathutils)
         scene.render.filepath = str(normal_dir / f"view_{idx:02d}.png")
         bpy.ops.render.render(write_still=True)
 
