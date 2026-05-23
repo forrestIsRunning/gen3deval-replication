@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 import argparse
-import json
 import os
-import re
 import time
 from pathlib import Path
 from typing import Any
 
-import requests
 from dotenv import load_dotenv
 from PIL import Image
 
-from common import ROOT, append_jsonl, image_to_data_url, read_jsonl
+from common import ROOT, append_jsonl, read_jsonl
 from observability import trace_vlm_call, push_to_annotation_queue, log_feedback_scores
+from vlm_agent import image_content, run_structured
+from vlm_types import AssetScoreResult, ManifestRow
 
 DIMENSIONS = [
     "text_fidelity",
@@ -81,30 +80,27 @@ PROMPT_V2 = """你是一位专业的 3D 资产评测专家。请基于多视角�
 PROMPT_VARIANTS: dict[str, str] = {"v1": PROMPT_V1, "v2": PROMPT_V2}
 
 
-def _handle_low_score_trace(trace_id: str, result_text: str) -> None:
-    parsed = extract_json(result_text)
-    scores = parsed.get("scores", {})
+def _handle_low_score_trace(trace_id: str, result: AssetScoreResult) -> None:
+    scores = result.get("scores", {})
     overall = scores.get("overall", 0)
     if not overall or float(overall) >= 6:
-        return
-    push_to_annotation_queue(trace_id, float(overall))
-    log_feedback_scores(trace_id, {name: float(scores.get(name, 0)) for name in DIMENSIONS})
+        return {
+            "queue": {"ok": True, "skipped": True, "reason": "score_above_threshold"},
+            "feedback": {"ok": True, "skipped": True, "reason": "score_above_threshold"},
+        }
+    return {
+        "queue": push_to_annotation_queue(trace_id, float(overall)),
+        "feedback": log_feedback_scores(
+            trace_id,
+            {name: float(scores.get(name, 0)) for name in DIMENSIONS},
+        ),
+    }
 
 
 def find_images(uid: str, render_dir: Path) -> list[Path]:
     rgb = sorted((render_dir / uid / "rgb").glob("*.png"))[:4]
     normal = sorted((render_dir / uid / "normal").glob("*.png"))[:4]
     return rgb + normal
-
-
-def extract_json(text: str) -> dict[str, Any]:
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, re.S)
-        if not match:
-            raise
-        return json.loads(match.group(0))
 
 
 def prepare_image(path: Path, image_size: int, tmp_dir: Path) -> Path:
@@ -119,7 +115,7 @@ def prepare_image(path: Path, image_size: int, tmp_dir: Path) -> Path:
 
 
 def call_vlm(
-    row: dict[str, Any],
+    row: ManifestRow,
     images: list[Path],
     model: str,
     base_url: str,
@@ -128,23 +124,18 @@ def call_vlm(
     timeout: int,
     prompt_variant: str = "v1",
     idx: int = 0,
-) -> dict:
-    content: list[dict[str, Any]] = []
+) -> AssetScoreResult:
+    observability: dict[str, Any] = {}
+
+    user_content: list[Any] = []
     tmp_dir = ROOT / "data" / "processed" / "_vlm_tmp" / row["uid"]
     for image in images:
         prepared = prepare_image(image, image_size, tmp_dir)
-        content.append({"type": "image_url", "image_url": {"url": image_to_data_url(prepared)}})
+        user_content.append(image_content(prepared))
 
     prompt_tpl = PROMPT_VARIANTS.get(prompt_variant, PROMPT_V1)
     prompt = prompt_tpl.format(prompt=row.get("prompt", ""), category=row.get("category", ""))
-    content.append({"type": "text", "text": prompt})
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": content}],
-        "temperature": 0,
-        "max_tokens": 1200,
-    }
-    endpoint = f"{base_url.rstrip('/')}/v1/chat/completions"
+    user_content.append(prompt)
     safe_input = {
         "uid": row["uid"],
         "category": row.get("category"),
@@ -163,28 +154,33 @@ def call_vlm(
         "prompt_variant": prompt_variant,
     }
 
-    def request_vlm() -> str:
-        resp = requests.post(
-            endpoint,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=timeout,
+    def request_vlm() -> AssetScoreResult:
+        return run_structured(
+            model_name=model,
+            base_url=base_url,
+            api_key=api_key,
+            instructions=(
+                "你是一个严格的 3D 资产评测员。"
+                "请基于用户给出的多视角图片输出结构化评分。"
+                "不要输出 Markdown。"
+            ),
+            output_type=AssetScoreResult,
+            user_content=user_content,
+            temperature=0,
+            max_tokens=1200,
         )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
 
-    def summarize(text: str, elapsed_ms: float) -> dict[str, Any]:
-        parsed = extract_json(text)
-        scores = parsed.get("scores", {})
+    def summarize(result: AssetScoreResult, elapsed_ms: float) -> dict[str, Any]:
+        scores = result.get("scores", {})
         return {
             "latency_ms": elapsed_ms,
             "http_status": 200,
             **{f"score.{name}": scores.get(name) for name in DIMENSIONS},
-            "issue_count": len(parsed.get("issues", [])),
-            "strength_count": len(parsed.get("strengths", [])),
+            "issue_count": len(result.get("issues", [])),
+            "strength_count": len(result.get("strengths", [])),
         }
 
-    text = trace_vlm_call(
+    result = trace_vlm_call(
         name=f"gen3d.vlm.score_asset.{prompt_variant}",
         safe_input=safe_input,
         operation=request_vlm,
@@ -194,12 +190,14 @@ def call_vlm(
         model=model,
         image_paths=images,
         glb_path=Path(row.get("local_path", "")) if row.get("local_path") else None,
+        observability_sink=observability.update,
     )
-    return extract_json(text)
+    result["observability"] = observability
+    return result
 
 
 def _add_trial_output(
-    out_rows: list[dict], row: dict, result: dict, variant: str,
+    out_rows: list[dict], row: ManifestRow, result: AssetScoreResult, variant: str,
     model: str, uid: str,
 ) -> None:
     out = {
@@ -216,7 +214,7 @@ def _add_trial_output(
 
 
 def run_single(
-    rows: list[dict],
+    rows: list[ManifestRow],
     model: str,
     base_url: str,
     api_key: str,
@@ -258,7 +256,7 @@ def run_single(
 
 
 def run_experiment(
-    rows: list[dict],
+    rows: list[ManifestRow],
     model: str,
     base_url: str,
     api_key: str,
@@ -293,7 +291,7 @@ def run_experiment(
         ])
 
     def make_task(variant: str):
-        def task(item: dict) -> dict:
+        def task(item: ManifestRow) -> dict:
             uid = item["uid"]
             images = find_images(uid, render_dir)[:max_images]
             if len(images) < 4:

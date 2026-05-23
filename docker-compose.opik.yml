@@ -1,0 +1,270 @@
+name: gen3deval-opik
+
+services:
+  opik-mysql:
+    image: mysql:8.4.2
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${OPIK_MYSQL_ROOT_PASSWORD:-opik}
+      MYSQL_DATABASE: ${OPIK_MYSQL_DATABASE:-opik}
+      MYSQL_USER: ${OPIK_MYSQL_USER:-opik}
+      MYSQL_PASSWORD: ${OPIK_MYSQL_PASSWORD:-opik}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 2s
+      timeout: 2s
+      retries: 120
+    volumes:
+      - opik-mysql-data:/var/lib/mysql
+
+  opik-redis:
+    image: redis:7.2.4-alpine3.19
+    restart: unless-stopped
+    command: redis-server --requirepass ${OPIK_REDIS_PASSWORD:-opik}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${OPIK_REDIS_PASSWORD:-opik}", "PING"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    volumes:
+      - opik-redis-data:/data
+
+  opik-zookeeper:
+    image: zookeeper:3.9.4
+    restart: unless-stopped
+    hostname: zookeeper
+    user: root
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        mkdir -p /bitnami/zookeeper/data
+        chown -R zookeeper:zookeeper /bitnami/zookeeper
+        exec gosu zookeeper /docker-entrypoint.sh zkServer.sh start-foreground
+    environment:
+      JVMFLAGS: "-Xmx512m"
+      ZOO_4LW_COMMANDS_WHITELIST: "srvr,ruok"
+      ZOO_DATA_DIR: /bitnami/zookeeper/data
+      ZOO_DATA_LOG_DIR: /bitnami/zookeeper/data
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep -q imok"]
+      interval: 2s
+      timeout: 2s
+      retries: 120
+    volumes:
+      - opik-zookeeper-data:/bitnami/zookeeper
+    networks:
+      default:
+        aliases:
+          - zookeeper
+
+  opik-clickhouse-init:
+    image: alpine:3.22
+    command:
+      - /bin/sh
+      - -c
+      - |
+        cat <<'EOF' >/config/additional_config.xml
+        <clickhouse>
+          <macros>
+            <shard>1</shard>
+            <replica>clickhouse</replica>
+            <cluster>cluster</cluster>
+          </macros>
+          <zookeeper>
+            <node>
+              <host>zookeeper</host>
+              <port>2181</port>
+            </node>
+          </zookeeper>
+          <zookeeper_path>/clickhouse</zookeeper_path>
+          <zookeeper_session_timeout_ms>30000</zookeeper_session_timeout_ms>
+          <distributed_ddl>
+            <path>/clickhouse/task_queue/ddl</path>
+          </distributed_ddl>
+          <remote_servers>
+            <cluster>
+              <shard>
+                <replica>
+                  <host>clickhouse</host>
+                  <port>9000</port>
+                </replica>
+              </shard>
+            </cluster>
+          </remote_servers>
+        </clickhouse>
+        EOF
+        chown -R 1000:1000 /config
+    volumes:
+      - opik-clickhouse-config:/config
+
+  opik-clickhouse:
+    image: clickhouse/clickhouse-server:25.3.6.56-alpine
+    restart: unless-stopped
+    hostname: clickhouse
+    environment:
+      CLICKHOUSE_DB: ${OPIK_CLICKHOUSE_DATABASE:-opik}
+      CLICKHOUSE_USER: ${OPIK_CLICKHOUSE_USER:-opik}
+      CLICKHOUSE_PASSWORD: ${OPIK_CLICKHOUSE_PASSWORD:-opik}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    depends_on:
+      opik-zookeeper:
+        condition: service_healthy
+      opik-clickhouse-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 120
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - opik-clickhouse-data:/var/lib/clickhouse
+      - opik-clickhouse-logs:/var/log/clickhouse-server
+      - opik-clickhouse-config:/etc/clickhouse-server/config.d
+    networks:
+      default:
+        aliases:
+          - clickhouse
+
+  opik-minio:
+    image: minio/minio:RELEASE.2025-03-12T18-04-18Z
+    restart: unless-stopped
+    command: server --console-address ":9090" /data
+    environment:
+      MINIO_ROOT_USER: ${OPIK_MINIO_ROOT_USER:-opikminio}
+      MINIO_ROOT_PASSWORD: ${OPIK_MINIO_ROOT_PASSWORD:-opikminiosecret}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+    volumes:
+      - opik-minio-data:/data
+
+  opik-mc:
+    image: minio/mc:RELEASE.2025-03-12T17-29-24Z
+    depends_on:
+      opik-minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        sleep 5
+        /usr/bin/mc alias set s3 http://opik-minio:9000 ${OPIK_MINIO_ROOT_USER:-opikminio} ${OPIK_MINIO_ROOT_PASSWORD:-opikminiosecret} --api S3v4
+        /usr/bin/mc mb --ignore-existing s3/public
+        /usr/bin/mc anonymous set download s3/public/
+
+  opik-backend:
+    image: ghcr.io/comet-ml/opik/opik-backend:${OPIK_VERSION:-latest}
+    restart: unless-stopped
+    command: ["bash", "-c", "./run_db_migrations.sh && ./entrypoint.sh"]
+    depends_on:
+      opik-mysql:
+        condition: service_healthy
+      opik-clickhouse:
+        condition: service_healthy
+      opik-minio:
+        condition: service_healthy
+      opik-redis:
+        condition: service_healthy
+    environment:
+      STATE_DB_PROTOCOL: "jdbc:mysql://"
+      STATE_DB_URL: "opik-mysql:3306/${OPIK_MYSQL_DATABASE:-opik}?createDatabaseIfNotExist=true&rewriteBatchedStatements=true"
+      STATE_DB_DATABASE_NAME: ${OPIK_MYSQL_DATABASE:-opik}
+      STATE_DB_USER: ${OPIK_MYSQL_USER:-opik}
+      STATE_DB_PASS: ${OPIK_MYSQL_PASSWORD:-opik}
+      ANALYTICS_DB_MIGRATIONS_URL: "jdbc:clickhouse://opik-clickhouse:8123"
+      ANALYTICS_DB_MIGRATIONS_USER: ${OPIK_CLICKHOUSE_USER:-opik}
+      ANALYTICS_DB_MIGRATIONS_PASS: ${OPIK_CLICKHOUSE_PASSWORD:-opik}
+      ANALYTICS_DB_PROTOCOL: "HTTP"
+      ANALYTICS_DB_HOST: "opik-clickhouse"
+      ANALYTICS_DB_PORT: 8123
+      ANALYTICS_DB_DATABASE_NAME: ${OPIK_CLICKHOUSE_DATABASE:-opik}
+      ANALYTICS_DB_USERNAME: ${OPIK_CLICKHOUSE_USER:-opik}
+      ANALYTICS_DB_PASS: ${OPIK_CLICKHOUSE_PASSWORD:-opik}
+      REDIS_URL: redis://:${OPIK_REDIS_PASSWORD:-opik}@opik-redis:6379/
+      AWS_ACCESS_KEY_ID: ${OPIK_MINIO_ROOT_USER:-opikminio}
+      AWS_SECRET_ACCESS_KEY: ${OPIK_MINIO_ROOT_PASSWORD:-opikminiosecret}
+      IS_MINIO: "true"
+      S3_URL: http://opik-minio:9000
+      PYTHON_EVALUATOR_URL: http://opik-python-backend:${OPIK_PYTHON_BACKEND_PORT:-8000}
+      TOGGLE_OPIK_AI_ENABLED: "false"
+      TOGGLE_GUARDRAILS_ENABLED: "false"
+      TOGGLE_OPTIMIZATION_STUDIO_ENABLED: "false"
+      TOGGLE_WELCOME_WIZARD_ENABLED: "true"
+      LLM_MODEL_REGISTRY_REMOTE_ENABLED: "false"
+      CORS: "true"
+      ATTACHMENTS_STRIP_MIN_SIZE: ${OPIK_ATTACHMENTS_STRIP_MIN_SIZE:-256000}
+      JACKSON_MAX_STRING_LENGTH: ${OPIK_JACKSON_MAX_STRING_LENGTH:-104857600}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health-check"]
+      interval: 2s
+      timeout: 10s
+      retries: 300
+      start_period: 5s
+    expose:
+      - "8080"
+      - "3003"
+
+  opik-python-backend:
+    image: ghcr.io/comet-ml/opik/opik-python-backend:${OPIK_VERSION:-latest}
+    restart: unless-stopped
+    privileged: true
+    depends_on:
+      opik-redis:
+        condition: service_healthy
+    environment:
+      OPIK_OTEL_SDK_ENABLED: "false"
+      PYTHON_CODE_EXECUTOR_STRATEGY: process
+      PYTHON_CODE_EXECUTOR_CONTAINERS_NUM: 5
+      PYTHON_CODE_EXECUTOR_EXEC_TIMEOUT_IN_SECS: 3
+      PYTHON_CODE_EXECUTOR_ALLOW_NETWORK: "false"
+      PYTHON_CODE_EXECUTOR_CPU_SHARES: 512
+      PYTHON_CODE_EXECUTOR_MEM_LIMIT: "256m"
+      OPIK_REVERSE_PROXY_URL: http://opik-frontend:${OPIK_FRONTEND_PORT:-5173}/api
+      PYTHON_BACKEND_PORT: ${OPIK_PYTHON_BACKEND_PORT:-8000}
+      REDIS_URL: redis://:${OPIK_REDIS_PASSWORD:-opik}@opik-redis:6379/0
+      RQ_WORKER_ENABLED: "true"
+      OPIK_URL_OVERRIDE: http://opik-backend:8080
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --spider --quiet http://127.0.0.1:$${PYTHON_BACKEND_PORT:-8000}/healthcheck"]
+      interval: 2s
+      timeout: 30s
+      retries: 60
+      start_period: 5s
+
+  opik-frontend:
+    image: ghcr.io/comet-ml/opik/opik-frontend:${OPIK_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      opik-backend:
+        condition: service_healthy
+    ports:
+      - "${OPIK_FRONTEND_PORT:-5173}:5173"
+    environment:
+      OPIK_VERSION: ${OPIK_VERSION:-latest}
+      NGINX_PORT: 5173
+      NGINX_CONF_SUFFIX: local
+      OTEL_TRACE: off
+    volumes:
+      - ./docker/opik/nginx_local.conf:/etc/nginx/templates/default.conf.template:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --fail-early http://localhost:5173/health"]
+      interval: 2s
+      timeout: 10s
+      retries: 60
+      start_period: 5s
+
+volumes:
+  opik-mysql-data:
+  opik-redis-data:
+  opik-zookeeper-data:
+  opik-clickhouse-data:
+  opik-clickhouse-logs:
+  opik-clickhouse-config:
+  opik-minio-data:

@@ -1,8 +1,0 @@
-objaverse>=0.1.7
-pandas>=2.2.0
-requests>=2.32.0
-python-dotenv>=1.0.1
-Pillow>=10.4.0
-matplotlib>=3.9.0
-tqdm>=4.66.0
-PyYAML>=6.0.2

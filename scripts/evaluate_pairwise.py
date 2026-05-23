@@ -1,29 +1,18 @@
 #!/usr/bin/env python3
 import argparse
-import json
 import os
-import re
 from pathlib import Path
 from typing import Any
 
-import requests
 from dotenv import load_dotenv
 
-from common import ROOT, append_jsonl, image_to_data_url, read_jsonl
+from common import ROOT, append_jsonl, read_jsonl
 from observability import trace_vlm_call
+from vlm_agent import image_content, run_structured
+from vlm_types import PairRow, PairwiseJudgeResult
 
 
 DIMENSIONS = ["appearance", "surface", "text_fidelity"]
-
-
-def extract_json(text: str) -> dict[str, Any]:
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, re.S)
-        if not match:
-            raise
-        return json.loads(match.group(0))
 
 
 def images_for(uid: str, dimension: str, render_dir: Path) -> list[Path]:
@@ -31,16 +20,18 @@ def images_for(uid: str, dimension: str, render_dir: Path) -> list[Path]:
     return sorted((render_dir / uid / subdir).glob("*.png"))[:4]
 
 
-def judge(pair: dict, dimension: str, model: str, base_url: str, api_key: str, render_dir: Path) -> dict:
+def judge(
+    pair: PairRow, dimension: str, model: str, base_url: str, api_key: str, render_dir: Path,
+) -> PairwiseJudgeResult:
     a = pair["object_a"]
     b = pair["object_b"]
     images = images_for(a["uid"], dimension, render_dir) + images_for(b["uid"], dimension, render_dir)
     if len(images) != 8:
         raise FileNotFoundError(f"Expected 8 images for pair {pair['pair_id']} dimension {dimension}")
 
-    content: list[dict[str, Any]] = []
+    user_content = []
     for image in images:
-        content.append({"type": "image_url", "image_url": {"url": image_to_data_url(image)}})
+        user_content.append(image_content(image))
 
     prompt_line = ""
     if dimension == "text_fidelity":
@@ -59,13 +50,7 @@ def judge(pair: dict, dimension: str, model: str, base_url: str, api_key: str, r
   "reason": "中文简短理由"
 }}
 """
-    content.append({"type": "text", "text": text})
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": content}],
-        "temperature": 0,
-        "max_tokens": 800,
-    }
+    user_content.append(text)
     safe_input = {
         "pair_id": pair["pair_id"],
         "dimension": dimension,
@@ -82,27 +67,31 @@ def judge(pair: dict, dimension: str, model: str, base_url: str, api_key: str, r
         "timeout": 180,
     }
 
-    def request_vlm() -> requests.Response:
-        response = requests.post(
-            f"{base_url.rstrip('/')}/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=180,
+    def request_vlm() -> PairwiseJudgeResult:
+        return run_structured(
+            model_name=model,
+            base_url=base_url,
+            api_key=api_key,
+            instructions=(
+                "你是 Gen3DEval 风格的 3D 资产偏好评测员。"
+                "请只输出结构化结果，不要输出 Markdown。"
+            ),
+            output_type=PairwiseJudgeResult,
+            user_content=user_content,
+            temperature=0,
+            max_tokens=800,
         )
-        response.raise_for_status()
-        return response
 
-    def summarize(response: requests.Response, elapsed_ms: float) -> dict[str, Any]:
-        parsed = extract_json(response.json()["choices"][0]["message"]["content"])
+    def summarize(result: PairwiseJudgeResult, elapsed_ms: float) -> dict[str, Any]:
         return {
             "latency_ms": elapsed_ms,
-            "http_status": response.status_code,
-            "winner": parsed.get("winner", "tie"),
-            "confidence": parsed.get("confidence", 0),
-            "reason_chars": len(str(parsed.get("reason", ""))),
+            "http_status": 200,
+            "winner": result.get("winner", "tie"),
+            "confidence": result.get("confidence", 0),
+            "reason_chars": len(str(result.get("reason", ""))),
         }
 
-    response = trace_vlm_call(
+    parsed = trace_vlm_call(
         name="gen3d.vlm.pairwise_judge",
         safe_input=safe_input,
         operation=request_vlm,
@@ -110,7 +99,6 @@ def judge(pair: dict, dimension: str, model: str, base_url: str, api_key: str, r
         metadata=metadata,
         model=model,
     )
-    parsed = extract_json(response.json()["choices"][0]["message"]["content"])
     parsed["winner"] = parsed.get("winner", "tie")
     if parsed["winner"] not in {"A", "B", "tie"}:
         parsed["winner"] = "tie"

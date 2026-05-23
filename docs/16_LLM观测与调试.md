@@ -2,6 +2,20 @@
 
 本项目强制依赖 `Opik`。`scripts/score_assets.py` 和 `scripts/evaluate_pairwise.py` 都通过 `scripts/observability.py` 上报脱敏 trace，不再支持 LangSmith 或 Langfuse。
 
+模型调用层当前使用 `Pydantic AI + TypedDict`：
+
+- 不再手写 `requests.post(.../chat/completions)`；
+- 不再依赖正则/`json.loads` 从自由文本里抠 JSON；
+- 输出类型由 `scripts/vlm_types.py` 中的 `TypedDict` 定义；
+- LiteLLM / OpenAI-compatible 适配由 `scripts/vlm_agent.py` 统一处理。
+
+当前实现采用“主流程优先、观测分层降级”策略：
+
+- VLM 请求成功时，评分结果仍然会写入本地结果文件；
+- Opik trace、attachment、annotation queue、feedback score 各自独立写入；
+- 某个观测子步骤返回 500 时，不再中断整条评分；
+- 每条结果会新增 `observability` 字段，明确记录 trace / attachment / queue / feedback / flush 的成功或失败。
+
 ## 已接入的位置
 
 - `scripts/score_assets.py`：单资产 VLM 多维评分，支持 prompt v1/v2 和 A/B test。
@@ -48,6 +62,13 @@ OPIK_PROJECT_NAME=gen3deval-replication
 OPIK_WORKSPACE=default
 ```
 
+如果本机没有可用的 Opik，可直接使用仓库内置编排：
+
+```bash
+cp .env.opik.example .env.opik
+docker compose --env-file .env.opik -f docker-compose.opik.yml up -d
+```
+
 ## 单次评分
 
 默认单跑使用 prompt v2：
@@ -78,15 +99,15 @@ uv run python scripts/score_assets.py \
 
 ## Human-in-the-loop
 
-当 `overall < 6` 时，当前 trace 会自动：
+当 `overall < 6` 时，当前 trace 会尝试自动：
 
 - 推入 annotation queue `low-score-review`
 - 记录 7 个维度的 feedback scores
 
-这一步在 trace 上下文内部完成，依赖真实 trace id，不是离线补写。
+这一步依赖真实 trace id，不是离线补写。如果后端返回 500，失败信息会保存在结果里的 `observability.post_trace`。
 
 ## 调试原则
 
 - 缺少 `opik` SDK 或 `OPIK_*` 配置时，主流程直接失败。
-- queue、feedback、experiment 失败都应显式报错。
+- queue、feedback、attachment、flush 失败都应显式记录到结果里的 `observability` 字段。
 - 如果要排查低分样本，优先检查 trace attachments 是否包含 8 张图和对应 `.glb`。

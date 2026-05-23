@@ -4,9 +4,7 @@
 
 ```bash
 cd /Users/xiaoxia/Projects/experiments/gen3deval-replication
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 cp .env.example .env
 ```
 
