@@ -10,6 +10,7 @@ import requests
 from dotenv import load_dotenv
 
 from common import ROOT, append_jsonl, image_to_data_url, read_jsonl
+from observability import trace_vlm_call
 
 
 DIMENSIONS = ["appearance", "surface", "text_fidelity"]
@@ -65,13 +66,50 @@ def judge(pair: dict, dimension: str, model: str, base_url: str, api_key: str, r
         "temperature": 0,
         "max_tokens": 800,
     }
-    response = requests.post(
-        f"{base_url.rstrip('/')}/v1/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=180,
+    safe_input = {
+        "pair_id": pair["pair_id"],
+        "dimension": dimension,
+        "model": model,
+        "object_a_uid": a["uid"],
+        "object_b_uid": b["uid"],
+        "object_a_category": a.get("category"),
+        "object_b_category": b.get("category"),
+        "image_count": len(images),
+    }
+    metadata = {
+        "script": "evaluate_pairwise.py",
+        "endpoint_host": base_url.split("//")[-1].split("/")[0],
+        "timeout": 180,
+    }
+
+    def request_vlm() -> requests.Response:
+        response = requests.post(
+            f"{base_url.rstrip('/')}/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=180,
+        )
+        response.raise_for_status()
+        return response
+
+    def summarize(response: requests.Response, elapsed_ms: float) -> dict[str, Any]:
+        parsed = extract_json(response.json()["choices"][0]["message"]["content"])
+        return {
+            "latency_ms": elapsed_ms,
+            "http_status": response.status_code,
+            "winner": parsed.get("winner", "tie"),
+            "confidence": parsed.get("confidence", 0),
+            "reason_chars": len(str(parsed.get("reason", ""))),
+        }
+
+    response = trace_vlm_call(
+        name="gen3d.vlm.pairwise_judge",
+        safe_input=safe_input,
+        operation=request_vlm,
+        output_summary=summarize,
+        metadata=metadata,
+        model=model,
     )
-    response.raise_for_status()
     parsed = extract_json(response.json()["choices"][0]["message"]["content"])
     parsed["winner"] = parsed.get("winner", "tie")
     if parsed["winner"] not in {"A", "B", "tie"}:

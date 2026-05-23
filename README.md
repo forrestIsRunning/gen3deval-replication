@@ -27,6 +27,8 @@ LITELLM_API_KEY=your-key
 GEN3D_VLM_MODEL=qwen3-vl-235b-a22b-thinking
 ```
 
+默认不启用 LLM/VLM 观测。如果要接 Opik，见 `docs/16_LLM观测与调试.md`。
+
 如果本机需要代理，可在命令前设置：
 
 ```bash
@@ -227,3 +229,4 @@ content-type: model/gltf-binary
 - `docs/13_self_evolving_render_gate.md`
 - `docs/14_self_evolving_render_quality.md`
 - `docs/15_codebase_audit.md`
+- `docs/16_LLM观测与调试.md`
