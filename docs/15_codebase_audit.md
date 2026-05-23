@@ -37,9 +37,9 @@
 
 1. **共享质量算法**：`web/app.py` 和 `scripts/analyze_render_quality.py` 仍有重复实现，下一步应抽到 `scripts/render_quality_lib.py` 或项目内公共模块。
 2. **几何红线未参数化**：当前 readiness 只检查 geometry 是否存在，还没有按 `aspect_ratio`、`degenerate_face_count`、`face_count` 设置红线。
-3. **dashboard 仍偏全局**：`/api/dashboard` 仍读取固定 summary，后续应按 manifest 动态统计。
+3. **文档与运行面已分离**：当前主运行面已收缩为 geometry / render / score / minimal web UI；文档和论文材料保留，但不应再被视为默认执行入口。
 4. **pairwise 路径较旧**：`evaluate_pairwise.py` 仍使用旧维度 `surface`，还没有纳入 texture/material、多视角一致性和 readiness gate。
-5. **论文 ideas 静态写死**：`/api/literature-ideas` 是硬编码，后续可从 `paper/arxiv_survey/papers.json` 加一个 curated mapping 文件。
+5. **论文材料偏研究档案**：`paper/` 与 `docs/archive/` 适合作为知识背景，不应继续驱动前端或主流程 API 设计。
 
 ## 新论文启发
 

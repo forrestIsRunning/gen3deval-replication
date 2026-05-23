@@ -14,7 +14,7 @@ def main() -> None:
     try:
         import objaverse
     except ImportError as exc:
-        raise SystemExit("Install dependencies first: pip install -r requirements.txt") from exc
+        raise SystemExit("Install dependencies first: uv sync") from exc
 
     rows = read_jsonl(args.manifest)
     uids = [row["uid"] for row in rows]

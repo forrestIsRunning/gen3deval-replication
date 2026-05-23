@@ -167,6 +167,22 @@ uv run python -m py_compile web/app.py scripts/*.py
 node --check web/static/app.js
 ```
 
+Quick CLI checks:
+
+```bash
+uv run python scripts/score_assets.py --help
+uv run python scripts/compute_geometry_metrics.py --help
+uv run python scripts/download_objaverse_assets.py --help
+```
+
+Environment sanity:
+
+```bash
+ls data/processed
+ls data/renders
+ls data/results
+```
+
 API checks:
 
 ```bash

@@ -16,7 +16,7 @@ def main() -> None:
     try:
         import objaverse
     except ImportError as exc:
-        raise SystemExit("Install dependencies first: pip install -r requirements.txt") from exc
+        raise SystemExit("Install dependencies first: uv sync") from exc
 
     random.seed(args.seed)
     print("Loading Objaverse-LVIS annotations. First run may download metadata.")
