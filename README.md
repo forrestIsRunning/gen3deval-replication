@@ -10,6 +10,8 @@ cp .env.example .env
 uv run uvicorn web.app:app --host 127.0.0.1 --port 7860 --reload
 ```
 
+Opik 是必需依赖，`.env` 里必须有 `OPIK_BASE_URL`、`OPIK_PROJECT_NAME`、`OPIK_WORKSPACE`。
+
 ## 核心流程
 
 1. 准备 manifest。

@@ -1,6 +1,6 @@
 # LLM/VLM 观测与调试
 
-本项目当前只保留 `Opik` 这一条观测链路。`scripts/score_assets.py` 和 `scripts/evaluate_pairwise.py` 都通过 `scripts/observability.py` 上报脱敏 trace，不再支持 LangSmith 或 Langfuse。
+本项目强制依赖 `Opik`。`scripts/score_assets.py` 和 `scripts/evaluate_pairwise.py` 都通过 `scripts/observability.py` 上报脱敏 trace，不再支持 LangSmith 或 Langfuse。
 
 ## 已接入的位置
 
@@ -37,7 +37,7 @@ trace 名称：
 安装可选依赖：
 
 ```bash
-uv sync --extra observability
+uv sync
 ```
 
 在 `.env` 中配置：
@@ -87,6 +87,6 @@ uv run python scripts/score_assets.py \
 
 ## 调试原则
 
-- 缺少 `opik` SDK 时，观测自动降级，不阻塞主流程。
-- 观测失败不会中断评分，但需要通过 Opik UI 二次确认 queue 和 experiment 是否创建成功。
+- 缺少 `opik` SDK 或 `OPIK_*` 配置时，主流程直接失败。
+- queue、feedback、experiment 失败都应显式报错。
 - 如果要排查低分样本，优先检查 trace attachments 是否包含 8 张图和对应 `.glb`。

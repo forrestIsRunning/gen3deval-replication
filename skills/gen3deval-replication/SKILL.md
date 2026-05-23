@@ -22,6 +22,7 @@ The project is a public-data Gen3DEval-style 3D evaluation pipeline:
 ## Golden Rules
 
 - Use `uv`; do not introduce plain `pip` or ad hoc virtualenv instructions.
+- Opik is mandatory. Do not treat observability as optional in this repo.
 - Do not commit `.env`, `data/results/`, `data/renders/`, downloaded PDFs, or Objaverse assets.
 - Do not use mock data for scoring. VLM scores must come from real rendered images and real LiteLLM calls.
 - Keep the current VLM model list to:
@@ -46,6 +47,9 @@ Required `.env` keys:
 LITELLM_BASE_URL=http://120.48.38.233:4000
 LITELLM_API_KEY=your-key
 GEN3D_VLM_MODEL=qwen3-vl-235b-a22b-thinking
+OPIK_BASE_URL=http://localhost:5173/api
+OPIK_PROJECT_NAME=gen3deval-replication
+OPIK_WORKSPACE=default
 ```
 
 If network access needs the local proxy:

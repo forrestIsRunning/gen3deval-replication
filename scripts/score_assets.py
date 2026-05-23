@@ -273,8 +273,7 @@ def run_experiment(
         from opik import evaluate, opik_context
         from opik import Attachment
     except ImportError:
-        print("opik required for A/B test; run `uv sync --extra observability`")
-        return
+        raise SystemExit("Opik is required. Run `uv sync` first.")
 
     project = os.environ.get("OPIK_PROJECT_NAME", "gen3deval-replication")
     client = opik.Opik(project_name=project)
@@ -352,6 +351,8 @@ def main() -> None:
     api_key = os.environ.get("LITELLM_API_KEY", "")
     if not api_key:
         raise SystemExit("Missing LITELLM_API_KEY in .env")
+    if not os.environ.get("OPIK_BASE_URL") or not os.environ.get("OPIK_PROJECT_NAME") or not os.environ.get("OPIK_WORKSPACE"):
+        raise SystemExit("Missing required OPIK_* settings in .env")
 
     rows = read_jsonl(args.manifest)
     if args.limit:
